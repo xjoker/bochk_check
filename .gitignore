@@ -1,0 +1,8 @@
+/target
+.AIINFO/
+.idea/
+config.toml
+changes_*.jsonl
+api_log_*.jsonl
+data/
+temp/

@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOCHK 预约监控</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f5f7fa;color:#333;min-height:100vh}
+.header{background:#1a3a5c;color:#fff;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.header h1{font-size:18px;font-weight:600}
+.status-bar{font-size:13px;opacity:.85;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+.status-dot.ok{background:#4caf50}
+.status-dot.err{background:#f44336}
+.status-dot.wait{background:#ff9800}
+.status-dot.paused{background:#9e9e9e}
+.btn-pause{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;padding:2px 10px;border-radius:4px;font-size:12px;cursor:pointer;transition:all .15s}
+.btn-pause:hover{border-color:#fff;background:rgba(255,255,255,.1)}
+.btn-pause.active{background:rgba(255,255,255,.2);border-color:#fff}
+.filters{background:#fff;padding:12px 24px;border-bottom:1px solid #e0e0e0;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.filter-group{display:flex;flex-direction:column;gap:4px}
+.filter-group label{font-size:12px;color:#666;font-weight:600;text-transform:uppercase}
+.filter-group input[type=text]{padding:6px 10px;border:1px solid #d0d0d0;border-radius:4px;font-size:13px;width:min(100%,220px)}
+.chip-container{display:flex;flex-wrap:wrap;gap:4px;max-width:600px}
+.chip{padding:4px 10px;border-radius:12px;font-size:12px;cursor:pointer;border:1px solid #d0d0d0;background:#fff;transition:all .15s;user-select:none}
+.chip.active{background:#1a3a5c;color:#fff;border-color:#1a3a5c}
+.chip.full{background:#f5f5f5;color:#bbb;border-color:#e8e8e8}
+.chip:hover{border-color:#1a3a5c}
+.chip .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.dot-avail{background:#4caf50}
+.dot-full{background:#e0e0e0}
+.placeholder{font-size:12px;color:#bbb;padding:4px 0}
+.content{padding:24px}
+.no-data{text-align:center;padding:80px 20px;color:#999;font-size:16px}
+.date-section{margin-bottom:24px}
+.date-title{font-size:15px;font-weight:600;margin-bottom:8px;color:#1a3a5c;display:flex;align-items:center;gap:8px}
+.date-title .badge{padding:2px 8px;border-radius:8px;font-size:11px;font-weight:normal}
+.badge-avail{background:#e8f5e9;color:#2e7d32}
+.badge-full{background:#f5f5f5;color:#999}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+table{width:100%;min-width:540px;border-collapse:collapse;background:#fff;font-size:13px}
+th{background:#f0f4f8;color:#555;font-weight:600;padding:8px 12px;text-align:center;white-space:nowrap;border-bottom:2px solid #e0e0e0;position:sticky;top:0}
+th:first-child{text-align:left;min-width:180px}
+td{padding:6px 12px;text-align:center;border-bottom:1px solid #f0f0f0;white-space:nowrap}
+td:first-child{text-align:left;font-weight:500}
+tr:hover td{background:#f8fafc}
+.branch-cell{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.branch-name{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.map-link{font-size:12px;color:#1a73e8;text-decoration:none;flex-shrink:0}
+.map-link:hover{text-decoration:underline}
+.cell-a{background:#e8f5e9;color:#2e7d32;font-weight:600}
+.cell-f{color:#bbb;font-size:11px}
+.cell-empty{color:#e0e0e0}
+.summary{padding:12px 24px;background:#fff;border-top:1px solid #e0e0e0;font-size:12px;color:#888;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+@media (max-width: 768px){
+body{font-size:14px}
+.header{padding:14px 16px;align-items:flex-start}
+.header h1{font-size:17px}
+.status-bar{gap:8px;font-size:12px;line-height:1.5}
+.filters{padding:12px 16px;gap:12px;flex-direction:column}
+.filter-group{width:100%}
+.filter-group input[type=text]{width:100%}
+.chip-container{max-width:none}
+.content{padding:16px}
+.date-section{margin-bottom:16px}
+.date-title{font-size:14px;flex-wrap:wrap}
+.date-title .badge{font-size:10px}
+th,td{padding:8px 10px}
+th:first-child{min-width:160px}
+.branch-cell{gap:8px}
+.summary{padding:12px 16px;flex-direction:column;align-items:flex-start}
+}
+@media (max-width: 480px){
+.header{padding:12px}
+.filters{padding:10px 12px}
+.content{padding:12px}
+.summary{padding:10px 12px}
+.btn-pause{padding:4px 8px}
+.chip{padding:4px 8px;font-size:11px}
+table{min-width:500px;font-size:12px}
+th:first-child{min-width:150px}
+.branch-cell{flex-direction:column;align-items:flex-start}
+.branch-name{max-width:100%}
+.map-link{font-size:11px}
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>BOCHK 预约监控</h1>
+  <div class="status-bar">
+    <span><span class="status-dot wait" id="statusDot"></span><span id="statusText">连接中...</span></span>
+    <span id="checksInfo"></span>
+    <span id="updatedAt"></span>
+    <button class="btn-pause" id="btnPause" onclick="togglePause()">暂停刷新</button>
+  </div>
+</div>
+<div class="filters">
+  <div class="filter-group">
+    <label>日期</label>
+    <div class="chip-container" id="dateFilters"><span class="placeholder">等待数据...</span></div>
+  </div>
+  <div class="filter-group">
+    <label>时间段</label>
+    <div class="chip-container" id="timeFilters"><span class="placeholder">等待数据...</span></div>
+  </div>
+  <div class="filter-group">
+    <label>分行搜索</label>
+    <input type="text" id="branchSearch" placeholder="输入分行名称搜索...">
+  </div>
+</div>
+<div class="content" id="content">
+  <div class="no-data" id="noData">正在获取数据...</div>
+</div>
+<div class="summary">
+  <span id="summaryLeft"></span>
+  <span id="summaryRight">自动刷新中 · 每10秒更新</span>
+</div>
+
+<script>
+let DATA = null;
+let selectedDates = new Set();
+let selectedTimes = new Set();
+let branchKeyword = '';
+let paused = false;
+let refreshTimer = null;
+
+async function fetchData() {
+  if (paused) return;
+  try {
+    const resp = await fetch('/api/status');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    DATA = await resp.json();
+    updateStatus(true);
+    renderFilters();
+    renderTable();
+  } catch (e) {
+    updateStatus(false, e.message);
+  }
+}
+
+function togglePause() {
+  paused = !paused;
+  const btn = document.getElementById('btnPause');
+  const dot = document.getElementById('statusDot');
+  const right = document.getElementById('summaryRight');
+  if (paused) {
+    btn.textContent = '恢复刷新';
+    btn.classList.add('active');
+    dot.className = 'status-dot paused';
+    right.textContent = '已暂停刷新';
+  } else {
+    btn.textContent = '暂停刷新';
+    btn.classList.remove('active');
+    right.textContent = '自动刷新中 · 每10秒更新';
+    fetchData();
+  }
+}
+
+function updateStatus(ok, err) {
+  if (paused) return;
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  const checks = document.getElementById('checksInfo');
+  const updated = document.getElementById('updatedAt');
+
+  if (!ok) {
+    dot.className = 'status-dot err';
+    text.textContent = '连接失败: ' + (err || '');
+    return;
+  }
+  dot.className = 'status-dot ok';
+  text.textContent = DATA.monitoring ? '监控中' : '已停止';
+  checks.textContent = '已检查 ' + DATA.total_checks + ' 次';
+  updated.textContent = DATA.updated_at ? ('最后检测: ' + DATA.updated_at) : '';
+}
+
+function renderFilters() {
+  if (!DATA) return;
+  // 日期 chip：带状态标记
+  renderDateChips();
+  // 时间段 chip
+  const timeContainer = document.getElementById('timeFilters');
+  const times = DATA.time_slots || [];
+  if (times.length === 0) {
+    if (!timeContainer.querySelector('.placeholder')) {
+      timeContainer.innerHTML = '<span class="placeholder">暂无时间段数据</span>';
+    }
+  } else {
+    renderChipGroup('timeFilters', times, selectedTimes, () => { renderTable(); });
+  }
+}
+
+function renderDateChips() {
+  const container = document.getElementById('dateFilters');
+  const dateQuota = DATA.date_quota || {};
+  const dates = DATA.dates || [];
+
+  if (dates.length === 0) {
+    if (!container.querySelector('.placeholder')) {
+      container.innerHTML = '<span class="placeholder">暂无日期数据</span>';
+    }
+    return;
+  }
+
+  const existing = container.dataset.items;
+  const newItems = JSON.stringify(dates) + JSON.stringify(dateQuota);
+  if (existing === newItems) {
+    // 只更新状态
+    container.querySelectorAll('.chip').forEach(chip => {
+      const val = chip.dataset.value;
+      const raw = chip.dataset.raw;
+      const status = dateQuota[raw] || 'F';
+      const isActive = selectedDates.size === 0 || selectedDates.has(val);
+      chip.className = 'chip' + (isActive ? ' active' : '') + (status === 'F' ? ' full' : '');
+      const dot = chip.querySelector('.dot');
+      if (dot) dot.className = 'dot ' + (status === 'F' ? 'dot-full' : 'dot-avail');
+    });
+    return;
+  }
+  container.dataset.items = newItems;
+  container.innerHTML = '';
+
+  dates.forEach(dateStr => {
+    // 找到原始 key（20260305 格式），dateStr 是 2026-03-05 格式
+    const rawKey = dateStr.replace(/-/g, '');
+    const status = dateQuota[rawKey] || 'F';
+    const chip = document.createElement('span');
+    const isActive = selectedDates.size === 0 || selectedDates.has(dateStr);
+    chip.className = 'chip' + (isActive ? ' active' : '') + (status === 'F' ? ' full' : '');
+    chip.dataset.value = dateStr;
+    chip.dataset.raw = rawKey;
+    chip.innerHTML = '<span class="dot ' + (status === 'F' ? 'dot-full' : 'dot-avail') + '"></span>' + dateStr;
+    chip.onclick = () => {
+      if (selectedDates.has(dateStr)) {
+        selectedDates.delete(dateStr);
+      } else {
+        selectedDates.add(dateStr);
+      }
+      if (selectedDates.size === dates.length) selectedDates.clear();
+      container.querySelectorAll('.chip').forEach(c => {
+        const v = c.dataset.value;
+        const s = dateQuota[c.dataset.raw] || 'F';
+        const a = selectedDates.size === 0 || selectedDates.has(v);
+        c.className = 'chip' + (a ? ' active' : '') + (s === 'F' ? ' full' : '');
+      });
+      renderTable();
+    };
+    container.appendChild(chip);
+  });
+}
+
+function renderChipGroup(containerId, items, selectedSet, onChange) {
+  const container = document.getElementById(containerId);
+  const existing = container.dataset.items;
+  const newItems = JSON.stringify(items);
+  if (existing === newItems) {
+    container.querySelectorAll('.chip').forEach(chip => {
+      const val = chip.dataset.value;
+      chip.classList.toggle('active', selectedSet.size === 0 || selectedSet.has(val));
+    });
+    return;
+  }
+  container.dataset.items = newItems;
+  container.innerHTML = '';
+
+  items.forEach(item => {
+    const chip = document.createElement('span');
+    chip.className = 'chip' + (selectedSet.size === 0 || selectedSet.has(item) ? ' active' : '');
+    chip.textContent = item;
+    chip.dataset.value = item;
+    chip.onclick = () => {
+      if (selectedSet.has(item)) {
+        selectedSet.delete(item);
+      } else {
+        selectedSet.add(item);
+      }
+      if (selectedSet.size === items.length) selectedSet.clear();
+      container.querySelectorAll('.chip').forEach(c => {
+        c.classList.toggle('active', selectedSet.size === 0 || selectedSet.has(c.dataset.value));
+      });
+      onChange();
+    };
+    container.appendChild(chip);
+  });
+}
+
+function renderTable() {
+  const content = document.getElementById('content');
+  const summary = document.getElementById('summaryLeft');
+  const dateQuota = (DATA && DATA.date_quota) || {};
+
+  if (!DATA || !DATA.dates || DATA.dates.length === 0) {
+    content.innerHTML = '<div class="no-data">' + (DATA ? '暂无可预约时段' : '正在获取数据...') + '</div>';
+    summary.textContent = '';
+    return;
+  }
+
+  const hasBranches = DATA.branches && DATA.branches.length > 0;
+
+  // 过滤日期
+  const dates = (DATA.dates || []).filter(d => selectedDates.size === 0 || selectedDates.has(d));
+  // 过滤时间段
+  const times = (DATA.time_slots || []).filter(t => selectedTimes.size === 0 || selectedTimes.has(t));
+  // 过滤分行
+  const keyword = branchKeyword.toLowerCase();
+  const branches = !hasBranches ? [] : (DATA.branches || []).filter(b => {
+    if (keyword && !b.name.toLowerCase().includes(keyword) && !b.code.toLowerCase().includes(keyword)) return false;
+    if (dates.length === 0 && times.length === 0) return true;
+    const avail = b.availability || {};
+    for (const d of dates) {
+      if (!avail[d]) continue;
+      for (const t of times) {
+        if (avail[d][t]) return true;
+      }
+    }
+    return false;
+  });
+
+  let html = '';
+  let totalAvailable = 0;
+
+  dates.forEach(date => {
+    const rawKey = date.replace(/-/g, '');
+    const quotaStatus = dateQuota[rawKey] || 'F';
+    const isFull = quotaStatus === 'F';
+
+    const dateBranches = branches.filter(b => {
+      const da = (b.availability || {})[date];
+      if (!da) return false;
+      return times.some(t => da[t] && da[t] !== 'F');
+    });
+
+    const badgeClass = isFull ? 'badge-full' : 'badge-avail';
+    const badgeText = isFull ? '全部约满' : dateBranches.length + ' 个分行可预约';
+
+    html += '<div class="date-section">';
+    html += '<div class="date-title">' + date + ' <span class="badge ' + badgeClass + '">' + badgeText + '</span></div>';
+
+    if (isFull || (!hasBranches && !isFull)) {
+      html += '<div style="padding:20px;color:#bbb;font-size:13px;text-align:center;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08)">';
+      html += isFull ? '该日期暂无可预约时段' : '检测到有号，正在获取详细信息...';
+      html += '</div>';
+    } else if (times.length > 0) {
+      html += '<div class="table-wrap"><table><thead><tr><th>分行</th>';
+      times.forEach(t => { html += '<th>' + t + '</th>'; });
+      html += '</tr></thead><tbody>';
+
+      branches.forEach(b => {
+        const da = (b.availability || {})[date] || {};
+        const hasAny = times.some(t => da[t]);
+        if (!hasAny) return;
+
+        const mapUrl = 'https://uri.amap.com/search?query='
+          + encodeURIComponent('中银香港 ' + b.name)
+          + '&city=' + encodeURIComponent('香港')
+          + '&src=BOCHK';
+
+        html += '<tr><td><div class="branch-cell"><span class="branch-name">' + b.name + '</span><a class="map-link" href="' + mapUrl + '" target="_blank" rel="noopener noreferrer">查看地址</a></div></td>';
+        times.forEach(t => {
+          const status = da[t];
+          if (!status) {
+            html += '<td class="cell-empty">-</td>';
+          } else if (status === 'F') {
+            html += '<td class="cell-f">满</td>';
+          } else {
+            html += '<td class="cell-a">可约</td>';
+            totalAvailable++;
+          }
+        });
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+    }
+
+    html += '</div>';
+  });
+
+  if (!html) {
+    html = '<div class="no-data">当前筛选条件下无数据</div>';
+  }
+
+  content.innerHTML = html;
+
+  const parts = [dates.length + ' 个日期'];
+  if (times.length > 0) parts.push(times.length + ' 个时段');
+  if (branches.length > 0) parts.push(branches.length + ' 个分行');
+  if (totalAvailable > 0) parts.push(totalAvailable + ' 个可约');
+  summary.textContent = parts.join(' · ');
+}
+
+document.getElementById('branchSearch').addEventListener('input', function(e) {
+  branchKeyword = e.target.value;
+  renderTable();
+});
+
+fetchData();
+refreshTimer = setInterval(fetchData, 10000);
+</script>
+</body>
+</html>

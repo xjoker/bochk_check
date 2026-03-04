@@ -1,0 +1,18 @@
+# BOCHK 预约监控配置
+# 可选：若不提供本文件，也可用 BOCHK_* 环境变量启动
+
+[proxy]
+# SOCKS5 代理地址，留空则直连
+# 使用 socks5h:// 让代理端做 DNS 解析
+url = ""
+
+[monitor]
+# 请求间隔（秒）
+interval_secs = 30
+# 连续失败多少次后发送 Bark 告警
+max_fail_count = 5
+
+[bark]
+# Bark 推送地址列表，支持多人通知
+# 例如: ["https://api.day.app/token_a", "https://api.day.app/token_b"]
+urls = []

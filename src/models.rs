@@ -1,0 +1,103 @@
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+#[derive(serde::Serialize)]
+pub struct ChangeEntry {
+    pub timestamp: String,
+    pub raw_response: serde_json::Value,
+    pub diff: Option<Vec<FieldDiff>>,
+    pub available_dates: Vec<String>,
+    pub details: Option<Vec<SlotDetail>>,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct SlotDetail {
+    pub date: String,
+    pub time: String,
+    pub time_slot_id: String,
+    pub branches: Vec<BranchInfo>,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct BranchInfo {
+    pub name: String,
+    pub code: String,
+    pub status: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct FieldDiff {
+    pub path: String,
+    pub old_value: serde_json::Value,
+    pub new_value: serde_json::Value,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebData {
+    pub updated_at: String,
+    pub monitoring: bool,
+    pub total_checks: u64,
+    pub date_quota: BTreeMap<String, String>,
+    pub dates: Vec<String>,
+    pub time_slots: Vec<String>,
+    pub branches: Vec<WebBranch>,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct WebBranch {
+    pub name: String,
+    pub code: String,
+    pub availability: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+pub type SharedWebData = Arc<RwLock<WebData>>;
+
+pub fn build_web_data(
+    details: &[SlotDetail],
+    date_quota: &BTreeMap<String, String>,
+    total_checks: u64,
+) -> WebData {
+    use std::collections::BTreeSet;
+
+    let mut all_times: BTreeSet<String> = BTreeSet::new();
+    let mut branch_map: BTreeMap<(String, String), BTreeMap<String, BTreeMap<String, String>>> =
+        BTreeMap::new();
+
+    for slot in details {
+        all_times.insert(slot.time.clone());
+        for b in &slot.branches {
+            let entry = branch_map
+                .entry((b.code.clone(), b.name.clone()))
+                .or_default();
+            let date_map = entry.entry(slot.date.clone()).or_default();
+            date_map.insert(slot.time.clone(), b.status.clone());
+        }
+    }
+
+    let branches: Vec<WebBranch> = branch_map
+        .into_iter()
+        .map(|((code, name), availability)| WebBranch {
+            name,
+            code,
+            availability,
+        })
+        .collect();
+
+    let dates: Vec<String> = date_quota
+        .keys()
+        .map(|d| crate::parser::format_date(d))
+        .collect();
+
+    WebData {
+        updated_at: chrono::Local::now()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string(),
+        monitoring: true,
+        total_checks,
+        date_quota: date_quota.clone(),
+        dates,
+        time_slots: all_times.into_iter().collect(),
+        branches,
+    }
+}
