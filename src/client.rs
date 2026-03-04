@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use chrono::Local;
 use tracing::{debug, error, info, warn};
 use reqwest::Proxy;
+use reqwest::header::{HeaderMap, SET_COOKIE};
 
 pub const BASE_URL: &str = "https://transaction.bochk.com/whk/form/openAccount/";
 pub const USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.69(0x1800452d) NetType/4G Language/zh_CN";
@@ -38,7 +39,7 @@ pub fn build_client(proxy_url: &str) -> Result<reqwest::Client, Box<dyn std::err
 
 pub async fn initialize_session(
     client: &reqwest::Client,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
     let req_id = next_request_id();
     let url = format!("{}continueInput.action", BASE_URL);
     let start = std::time::Instant::now();
@@ -69,13 +70,29 @@ pub async fn initialize_session(
         .into());
     }
 
+    let jsessionid = extract_jsessionid(resp.headers());
+
     info!(
         target: "bochk_check::request_log",
-        "REQ#{req_id} OK init_session ({}ms)",
-        start.elapsed().as_millis()
+        "REQ#{req_id} OK init_session ({}ms) | jsessionid={}",
+        start.elapsed().as_millis(),
+        jsessionid.as_deref().unwrap_or("(未返回)")
     );
     debug!("会话初始化成功 ({}ms)", start.elapsed().as_millis());
-    Ok(())
+    Ok(jsessionid)
+}
+
+fn extract_jsessionid(headers: &HeaderMap) -> Option<String> {
+    for value in headers.get_all(SET_COOKIE) {
+        let header = value.to_str().ok()?;
+        for part in header.split(';') {
+            let trimmed = part.trim();
+            if let Some(jsessionid) = trimmed.strip_prefix("JSESSIONID=") {
+                return Some(jsessionid.to_string());
+            }
+        }
+    }
+    None
 }
 
 fn ensure_business_success(
@@ -97,6 +114,10 @@ fn ensure_business_success(
             Err(err.into())
         }
     }
+}
+
+fn business_code(json: &serde_json::Value) -> Option<&str> {
+    json.get("eaiCode").and_then(|v| v.as_str())
 }
 
 /// 通用 POST 请求，带重试（最多 3 次，间隔 300ms）
@@ -136,6 +157,7 @@ pub async fn api_post(
             Ok(resp) => {
                 let status = resp.status();
                 let elapsed = start.elapsed().as_millis();
+                let response_jsessionid = extract_jsessionid(resp.headers());
 
                 if !status.is_success() {
                     last_err = format!("HTTP {}: {}", status, action).into();
@@ -158,16 +180,37 @@ pub async fn api_post(
                 match resp.json::<serde_json::Value>().await {
                     Ok(json) => {
                         if let Err(e) = ensure_business_success(action, body, &json) {
+                            let code = business_code(&json).unwrap_or("");
                             warn!(
                                 target: "bochk_check::request_log",
-                                "REQ#{req_id} BIZ_ERR {} | attempt={}/{} | {}ms | {}",
+                                "REQ#{req_id} BIZ_ERR {} | attempt={}/{} | {}ms | {} | new_jsessionid={}",
                                 action,
                                 attempt,
                                 max_retries,
                                 elapsed,
-                                e
+                                e,
+                                response_jsessionid.as_deref().unwrap_or("(未返回)")
                             );
-                            warn!("← {} | 业务错误 | {}ms | {}", action, elapsed, e);
+                            warn!(
+                                "← {} | 业务错误 | {}ms | {} | new_jsessionid={}",
+                                action,
+                                elapsed,
+                                e,
+                                response_jsessionid.as_deref().unwrap_or("(未返回)")
+                            );
+
+                            if code == "WHKEQR888" && attempt < max_retries {
+                                warn!(
+                                    "← {} | WHKEQR888 视为可重试业务错误，沿用当前 Client 重试 {}/{}",
+                                    action,
+                                    attempt + 1,
+                                    max_retries
+                                );
+                                last_err = e;
+                                tokio::time::sleep(Duration::from_millis(300)).await;
+                                continue;
+                            }
+
                             return Err(e);
                         }
                         info!(
@@ -238,7 +281,7 @@ pub fn append_api_log(action: &str, body: &str, response: &serde_json::Value) {
     }
 
     let today = Local::now().format("%Y%m%d").to_string();
-    let log_path = crate::config::base_dir().join(format!("api_log_{}.jsonl", today));
+    let log_path = crate::config::log_dir().join(format!("api_log_{}.jsonl", today));
 
     let entry = serde_json::json!({
         "ts": Local::now().format("%H:%M:%S").to_string(),

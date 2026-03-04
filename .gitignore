@@ -1,8 +1,9 @@
 /target
 .AIINFO/
 .idea/
-config.toml
-changes_*.jsonl
-api_log_*.jsonl
-data/
+data/config/app.toml
+data/file/*
+!data/file/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
 temp/

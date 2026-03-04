@@ -14,7 +14,7 @@
 
 ## 当前实现概览
 
-- 每轮检测都会重新加载 `config.toml`
+- 每轮检测都会重新加载 `data/config/app.toml`
 - 每个 `interval` 都会新建一个独立 `reqwest::Client`
 - 每轮都会先请求 `continueInput.action` 初始化新会话
 - 因此每轮都会使用新的 `JSESSIONID`
@@ -57,10 +57,10 @@ continueInput.action
 
 ## 配置现状
 
-配置文件 `config.toml` 是可选的。程序配置优先级如下：
+配置文件 `data/config/app.toml` 是可选的。程序配置优先级如下：
 
 1. `BOCHK_*` 环境变量
-2. `config.toml`
+2. `data/config/app.toml`
 3. 代码内默认值
 
 当前默认值：
@@ -102,7 +102,7 @@ port = 32141
 调试模式：
 
 - 若设置 `logging.persist_jsonl=true`
-- 程序会在基准目录写入：
+- 程序会在 `data/logs/` 写入：
   - `api_log_YYYYMMDD.jsonl`
   - `changes_YYYYMMDD.jsonl`
 
@@ -157,7 +157,11 @@ bochk_check/
 │   ├── notifier.rs
 │   ├── web.rs
 │   └── web.html
-├── config.toml.example
+├── data/
+│   ├── config/
+│   │   └── app.toml.example
+│   ├── file/
+│   └── logs/
 ├── Cargo.toml
 ├── README.md
 └── AGENTS.md

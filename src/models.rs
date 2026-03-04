@@ -38,6 +38,7 @@ pub struct FieldDiff {
 #[derive(serde::Serialize, Clone, Default)]
 pub struct WebData {
     pub updated_at: String,
+    pub last_release_at: String,
     pub monitoring: bool,
     pub total_checks: u64,
     pub date_quota: BTreeMap<String, String>,
@@ -46,13 +47,64 @@ pub struct WebData {
     pub branches: Vec<WebBranch>,
 }
 
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebHistoryData {
+    pub today: WebHistoryDaySummary,
+    pub recent_days: Vec<WebHistoryDaySummary>,
+    pub recent_events: Vec<WebHistoryEvent>,
+    pub top_release_branches: Vec<WebBranchReleaseStat>,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebHistoryDaySummary {
+    pub date: String,
+    pub appeared_count: u32,
+    pub disappeared_count: u32,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebHistoryEvent {
+    pub event_at: String,
+    pub event_type: String,
+    pub appointment_date: String,
+    pub appointment_time: String,
+    pub branch_name: String,
+    pub duration_secs: u64,
+    pub address_cn: String,
+    pub tel_no: String,
+    pub google_maps_url: String,
+    pub bing_maps_url: String,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebBranchReleaseStat {
+    pub branch_name: String,
+    pub release_count: u32,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebAvailabilityCell {
+    pub status: String,
+    pub first_seen_at: String,
+}
+
 #[derive(serde::Serialize, Clone)]
 pub struct WebBranch {
     pub name: String,
     pub code: String,
     pub address_cn: String,
     pub tel_no: String,
-    pub availability: BTreeMap<String, BTreeMap<String, String>>,
+    pub availability: BTreeMap<String, BTreeMap<String, WebAvailabilityCell>>,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebBranchCatalogEntry {
+    pub code: String,
+    pub name: String,
+    pub address_cn: String,
+    pub tel_no: String,
+    pub is_enabled: bool,
+    pub updated_at: String,
 }
 
 pub type SharedWebData = Arc<RwLock<WebData>>;
@@ -61,13 +113,15 @@ pub fn build_web_data(
     details: &[SlotDetail],
     date_quota: &BTreeMap<String, String>,
     total_checks: u64,
+    last_release_at: &str,
+    first_seen_map: &BTreeMap<(String, String, String), String>,
 ) -> WebData {
     use std::collections::BTreeSet;
 
     let mut all_times: BTreeSet<String> = BTreeSet::new();
     let mut branch_map: BTreeMap<
         (String, String),
-        (String, String, BTreeMap<String, BTreeMap<String, String>>),
+        (String, String, BTreeMap<String, BTreeMap<String, WebAvailabilityCell>>),
     > = BTreeMap::new();
 
     for slot in details {
@@ -83,7 +137,16 @@ pub fn build_web_data(
                 entry.1 = b.tel_no.clone();
             }
             let date_map = entry.2.entry(slot.date.clone()).or_default();
-            date_map.insert(slot.time.clone(), b.status.clone());
+            date_map.insert(
+                slot.time.clone(),
+                WebAvailabilityCell {
+                    status: b.status.clone(),
+                    first_seen_at: first_seen_map
+                        .get(&(b.code.clone(), slot.date.clone(), slot.time.clone()))
+                        .cloned()
+                        .unwrap_or_default(),
+                },
+            );
         }
     }
 
@@ -107,6 +170,7 @@ pub fn build_web_data(
         updated_at: chrono::Local::now()
             .format("%Y-%m-%d %H:%M:%S")
             .to_string(),
+        last_release_at: last_release_at.to_string(),
         monitoring: true,
         total_checks,
         date_quota: date_quota.clone(),

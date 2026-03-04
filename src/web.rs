@@ -1,6 +1,6 @@
 use tracing::{info, error};
 
-use crate::models::{SharedWebData, WebData};
+use crate::models::{SharedWebData, WebBranchCatalogEntry, WebData, WebHistoryData};
 
 pub async fn web_index() -> axum::response::Html<&'static str> {
     axum::response::Html(include_str!("web.html"))
@@ -13,10 +13,32 @@ pub async fn web_api_status(
     axum::Json(data.clone())
 }
 
+pub async fn web_api_history() -> axum::Json<WebHistoryData> {
+    match crate::state::load_web_history(7, 24, 8) {
+        Ok(data) => axum::Json(data),
+        Err(e) => {
+            error!("读取历史数据失败: {}", e);
+            axum::Json(WebHistoryData::default())
+        }
+    }
+}
+
+pub async fn web_api_branches() -> axum::Json<Vec<WebBranchCatalogEntry>> {
+    match crate::state::load_branch_catalog() {
+        Ok(data) => axum::Json(data),
+        Err(e) => {
+            error!("读取分行目录失败: {}", e);
+            axum::Json(Vec::new())
+        }
+    }
+}
+
 pub async fn start_web_server(port: u16, state: SharedWebData) {
     let app = axum::Router::new()
         .route("/", axum::routing::get(web_index))
         .route("/api/status", axum::routing::get(web_api_status))
+        .route("/api/history", axum::routing::get(web_api_history))
+        .route("/api/branches", axum::routing::get(web_api_branches))
         .with_state(state);
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));

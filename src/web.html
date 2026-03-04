@@ -18,10 +18,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .btn-pause{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;padding:2px 10px;border-radius:4px;font-size:12px;cursor:pointer;transition:all .15s}
 .btn-pause:hover{border-color:#fff;background:rgba(255,255,255,.1)}
 .btn-pause.active{background:rgba(255,255,255,.2);border-color:#fff}
+.tab-bar{background:#fff;padding:10px 24px;border-bottom:1px solid #e0e0e0;display:flex;gap:8px}
+.tab-btn{padding:8px 14px;border:1px solid #d0d9e2;border-radius:999px;background:#f7fafc;color:#516273;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.tab-btn.active{background:#1a3a5c;color:#fff;border-color:#1a3a5c}
+.tab-section{display:none}
+.tab-section.active{display:block}
 .filters{background:#fff;padding:12px 24px;border-bottom:1px solid #e0e0e0;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
 .filter-group{display:flex;flex-direction:column;gap:4px}
 .filter-group label{font-size:12px;color:#666;font-weight:600;text-transform:uppercase}
 .filter-group input[type=text]{padding:6px 10px;border:1px solid #d0d0d0;border-radius:4px;font-size:13px;width:min(100%,220px)}
+.branch-tab-toolbar{background:#fff;padding:16px 24px;border-bottom:1px solid #e0e0e0;display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap}
 .chip-container{display:flex;flex-wrap:wrap;gap:4px;max-width:600px}
 .chip{padding:4px 10px;border-radius:12px;font-size:12px;cursor:pointer;border:1px solid #d0d0d0;background:#fff;transition:all .15s;user-select:none}
 .chip.active{background:#1a3a5c;color:#fff;border-color:#1a3a5c}
@@ -31,7 +37,43 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .dot-avail{background:#4caf50}
 .dot-full{background:#e0e0e0}
 .placeholder{font-size:12px;color:#bbb;padding:4px 0}
+.dashboard{padding:16px 24px 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.metric-card{background:linear-gradient(135deg,#ffffff,#f3f7fb);border:1px solid #dbe5ef;border-radius:14px;padding:14px 16px;box-shadow:0 8px 20px rgba(26,58,92,.06)}
+.metric-label{font-size:12px;color:#6a7b8f;font-weight:600;margin-bottom:8px}
+.metric-value{font-size:24px;font-weight:700;color:#18344f}
+.metric-sub{font-size:12px;color:#7f8fa2;margin-top:6px;line-height:1.5}
 .content{padding:24px}
+.panel-title{font-size:15px;font-weight:700;color:#18344f;margin-bottom:12px}
+.history-grid{padding:0 24px 24px;display:grid;grid-template-columns:1.3fr .9fr;gap:16px}
+.history-panel{background:#fff;border:1px solid #e3eaf1;border-radius:14px;padding:16px;box-shadow:0 10px 24px rgba(26,58,92,.05)}
+.day-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.day-card{background:#f8fbfd;border:1px solid #e4edf5;border-radius:12px;padding:12px}
+.day-card-date{font-size:12px;color:#677789;font-weight:600;margin-bottom:8px}
+.day-card-row{font-size:12px;color:#5c6d80;display:flex;justify-content:space-between;gap:8px}
+.rank-list,.event-list{display:flex;flex-direction:column;gap:10px}
+.catalog-list{display:flex;flex-direction:column;gap:10px;max-height:420px;overflow:auto}
+.rank-item{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:10px;background:#f8fbfd;border:1px solid #e4edf5;font-size:13px}
+.catalog-item{padding:10px 12px;border-radius:10px;background:#f8fbfd;border:1px solid #e4edf5}
+.catalog-top{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px}
+.catalog-name{font-size:13px;font-weight:700;color:#1a3a5c}
+.catalog-code{font-size:12px;color:#7f8fa2}
+.catalog-meta{font-size:12px;color:#5c6d80;line-height:1.5}
+.catalog-badge{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.catalog-badge.enabled{background:#e8f5e9;color:#2e7d32}
+.catalog-badge.disabled{background:#ffebee;color:#c62828}
+.rank-name{font-weight:600;color:#1a3a5c}
+.rank-value{color:#2e7d32;font-weight:700}
+.event-item{border:1px solid #e4edf5;border-radius:12px;padding:12px 14px;background:#fcfdff}
+.event-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px}
+.event-flag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700}
+.event-flag.appeared{color:#2e7d32}
+.event-flag.disappeared{color:#c62828}
+.event-time{font-size:12px;color:#7f8fa2;white-space:nowrap}
+.event-main{font-size:13px;color:#304152;line-height:1.6}
+.event-main strong{color:#18344f}
+.event-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:12px}
+.event-links a{color:#1d62c6;text-decoration:none}
+.event-links a:hover{text-decoration:underline}
 .no-data{text-align:center;padding:80px 20px;color:#999;font-size:16px}
 .date-section{margin-bottom:24px}
 .date-title{font-size:15px;font-weight:600;margin-bottom:8px;color:#1a3a5c;display:flex;align-items:center;gap:8px}
@@ -49,7 +91,12 @@ tr:hover td{background:#f8fafc}
 .branch-name{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#1a3a5c}
 .branch-meta{font-size:11px;color:#666;line-height:1.45;white-space:normal}
 .branch-meta div{margin:0}
+.branch-links{display:flex;gap:8px;flex-wrap:wrap}
+.branch-links a{color:#1d62c6;text-decoration:none}
+.branch-links a:hover{text-decoration:underline}
 .cell-a{background:#e8f5e9;color:#2e7d32;font-weight:600}
+.cell-a .cell-mark{display:block}
+.cell-a .cell-first-seen{display:block;margin-top:2px;font-size:10px;font-weight:500;color:#5d7a67}
 .cell-f{color:#bbb;font-size:11px}
 .cell-empty{color:#e0e0e0}
 .summary{padding:12px 24px;background:#fff;border-top:1px solid #e0e0e0;font-size:12px;color:#888;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
@@ -58,23 +105,32 @@ body{font-size:14px}
 .header{padding:14px 16px;align-items:flex-start}
 .header h1{font-size:17px}
 .status-bar{gap:8px;font-size:12px;line-height:1.5}
+.tab-bar{padding:10px 16px}
 .filters{padding:12px 16px;gap:12px;flex-direction:column}
+.branch-tab-toolbar{padding:12px 16px;gap:12px;flex-direction:column;align-items:stretch}
+.dashboard{padding:12px 16px 0;grid-template-columns:repeat(2,minmax(0,1fr))}
 .filter-group{width:100%}
 .filter-group input[type=text]{width:100%}
 .chip-container{max-width:none}
 .content{padding:16px}
+.history-grid{padding:0 16px 16px;grid-template-columns:1fr}
 .date-section{margin-bottom:16px}
 .date-title{font-size:14px;flex-wrap:wrap}
 .date-title .badge{font-size:10px}
 th,td{padding:8px 10px}
 th:first-child{min-width:160px}
 .branch-cell{gap:6px}
+.history-panel{padding:14px}
 .summary{padding:12px 16px;flex-direction:column;align-items:flex-start}
 }
 @media (max-width: 480px){
 .header{padding:12px}
+.tab-bar{padding:10px 12px;overflow:auto}
 .filters{padding:10px 12px}
+.branch-tab-toolbar{padding:10px 12px}
+.dashboard{padding:10px 12px 0;grid-template-columns:1fr}
 .content{padding:12px}
+.history-grid{padding:0 12px 12px}
 .summary{padding:10px 12px}
 .btn-pause{padding:4px 8px}
 .chip{padding:4px 8px;font-size:11px}
@@ -82,6 +138,7 @@ table{min-width:500px;font-size:12px}
 th:first-child{min-width:150px}
 .branch-name{max-width:100%}
 .branch-meta{font-size:10px}
+.metric-value{font-size:22px}
 }
 </style>
 </head>
@@ -92,25 +149,66 @@ th:first-child{min-width:150px}
     <span><span class="status-dot wait" id="statusDot"></span><span id="statusText">连接中...</span></span>
     <span id="checksInfo"></span>
     <span id="updatedAt"></span>
+    <span id="lastReleaseAt"></span>
     <button class="btn-pause" id="btnPause" onclick="togglePause()">暂停刷新</button>
   </div>
 </div>
-<div class="filters">
-  <div class="filter-group">
-    <label>日期</label>
-    <div class="chip-container" id="dateFilters"><span class="placeholder">等待数据...</span></div>
+<div class="tab-bar">
+  <button class="tab-btn active" id="tabBtnMonitor" onclick="switchTab('monitor')">监控概览</button>
+  <button class="tab-btn" id="tabBtnHistory" onclick="switchTab('history')">历史记录</button>
+  <button class="tab-btn" id="tabBtnBranches" onclick="switchTab('branches')">分行目录</button>
+</div>
+<div class="tab-section active" id="monitorTab">
+  <div class="filters">
+    <div class="filter-group">
+      <label>日期</label>
+      <div class="chip-container" id="dateFilters"><span class="placeholder">等待数据...</span></div>
+    </div>
+    <div class="filter-group">
+      <label>时间段</label>
+      <div class="chip-container" id="timeFilters"><span class="placeholder">等待数据...</span></div>
+    </div>
+    <div class="filter-group">
+      <label>分行搜索</label>
+      <input type="text" id="branchSearch" placeholder="输入当前可约分行搜索...">
+    </div>
   </div>
-  <div class="filter-group">
-    <label>时间段</label>
-    <div class="chip-container" id="timeFilters"><span class="placeholder">等待数据...</span></div>
-  </div>
-  <div class="filter-group">
-    <label>分行搜索</label>
-    <input type="text" id="branchSearch" placeholder="输入分行名称搜索...">
+  <div class="content" id="content">
+    <div class="no-data" id="noData">正在获取数据...</div>
   </div>
 </div>
-<div class="content" id="content">
-  <div class="no-data" id="noData">正在获取数据...</div>
+<div class="tab-section" id="historyTab">
+  <div class="dashboard" id="historyDashboard"></div>
+  <div class="history-grid" style="padding-top:16px">
+    <div class="history-panel">
+      <div class="panel-title">近 7 天放号统计</div>
+      <div class="day-stats" id="dayStats"></div>
+    </div>
+    <div class="history-panel">
+      <div class="panel-title">近 7 天高频分行</div>
+      <div class="rank-list" id="topBranches"></div>
+    </div>
+  </div>
+  <div class="history-grid" style="padding-top:0">
+    <div class="history-panel" style="grid-column:1/-1">
+      <div class="panel-title">最近变化记录</div>
+      <div class="event-list" id="recentEvents"></div>
+    </div>
+  </div>
+</div>
+<div class="tab-section" id="branchTab">
+  <div class="branch-tab-toolbar">
+    <div class="filter-group">
+      <label>分行搜索</label>
+      <input type="text" id="catalogSearch" placeholder="输入分行名称、编号、地址或电话搜索...">
+    </div>
+  </div>
+  <div class="history-grid" style="padding-top:16px">
+    <div class="history-panel" style="grid-column:1/-1">
+      <div class="panel-title">分行目录</div>
+      <div class="catalog-list" id="branchCatalog"></div>
+    </div>
+  </div>
 </div>
 <div class="summary">
   <span id="summaryLeft"></span>
@@ -119,23 +217,67 @@ th:first-child{min-width:150px}
 
 <script>
 let DATA = null;
+let HISTORY = null;
+let BRANCH_CATALOG = [];
 let selectedDates = new Set();
 let selectedTimes = new Set();
 let branchKeyword = '';
+let catalogKeyword = '';
+let activeTab = 'monitor';
 let paused = false;
 let refreshTimer = null;
 
 async function fetchData() {
   if (paused) return;
   try {
-    const resp = await fetch('/api/status');
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    DATA = await resp.json();
+    const [statusResp, historyResp] = await Promise.all([
+      fetch('/api/status'),
+      fetch('/api/history')
+    ]);
+    const branchResp = await fetch('/api/branches');
+    if (!statusResp.ok) throw new Error('HTTP ' + statusResp.status);
+    DATA = await statusResp.json();
+    HISTORY = historyResp.ok ? await historyResp.json() : null;
+    BRANCH_CATALOG = branchResp.ok ? await branchResp.json() : [];
     updateStatus(true);
     renderFilters();
+    renderDashboard();
     renderTable();
+    renderHistory();
+    renderBranchCatalog();
+    switchTab(activeTab, true);
   } catch (e) {
     updateStatus(false, e.message);
+  }
+}
+
+function switchTab(tab, silent) {
+  activeTab = tab;
+  const isMonitor = tab === 'monitor';
+  const isHistory = tab === 'history';
+  const isBranches = tab === 'branches';
+  document.getElementById('monitorTab').classList.toggle('active', isMonitor);
+  document.getElementById('historyTab').classList.toggle('active', isHistory);
+  document.getElementById('branchTab').classList.toggle('active', isBranches);
+  document.getElementById('tabBtnMonitor').classList.toggle('active', isMonitor);
+  document.getElementById('tabBtnHistory').classList.toggle('active', isHistory);
+  document.getElementById('tabBtnBranches').classList.toggle('active', isBranches);
+
+  if (!silent) {
+    renderTable();
+    renderDashboard();
+    renderHistory();
+    renderBranchCatalog();
+  }
+
+  if (isHistory) {
+    const today = (HISTORY && HISTORY.today) || { appeared_count: 0, disappeared_count: 0 };
+    document.getElementById('summaryLeft').textContent =
+      '今日 +' + (today.appeared_count || 0) + ' / -' + (today.disappeared_count || 0);
+  } else if (isBranches) {
+    renderBranchCatalog();
+  } else {
+    renderTable();
   }
 }
 
@@ -163,6 +305,7 @@ function updateStatus(ok, err) {
   const text = document.getElementById('statusText');
   const checks = document.getElementById('checksInfo');
   const updated = document.getElementById('updatedAt');
+  const lastRelease = document.getElementById('lastReleaseAt');
 
   if (!ok) {
     dot.className = 'status-dot err';
@@ -173,6 +316,86 @@ function updateStatus(ok, err) {
   text.textContent = DATA.monitoring ? '监控中' : '已停止';
   checks.textContent = '已检查 ' + DATA.total_checks + ' 次';
   updated.textContent = DATA.updated_at ? ('最后检测: ' + DATA.updated_at) : '';
+  lastRelease.textContent = DATA.last_release_at ? ('最后放号: ' + DATA.last_release_at) : '最后放号: 暂无';
+}
+
+function escapeHtml(text) {
+  return String(text || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function buildMapUrls(branchName, addressCn) {
+  const query = ['香港', addressCn || '', branchName || ''].filter(Boolean).join(' ');
+  const encoded = encodeURIComponent(query);
+  return {
+    google: 'https://www.google.com/maps/search/?api=1&query=' + encoded,
+    bing: 'https://www.bing.com/maps?q=' + encoded
+  };
+}
+
+function parseLocalDateTime(text) {
+  if (!text) return null;
+  const normalized = String(text).replace(' ', 'T');
+  const value = new Date(normalized);
+  return Number.isNaN(value.getTime()) ? null : value;
+}
+
+function formatDurationShort(totalSeconds) {
+  const seconds = Math.max(0, Number(totalSeconds) || 0);
+  if (seconds < 60) return seconds + '秒';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + '分';
+  const hours = Math.floor(minutes / 60);
+  const remainMinutes = minutes % 60;
+  if (hours < 24) return remainMinutes > 0 ? (hours + '时' + remainMinutes + '分') : (hours + '时');
+  const days = Math.floor(hours / 24);
+  const remainHours = hours % 24;
+  return remainHours > 0 ? (days + '天' + remainHours + '时') : (days + '天');
+}
+
+function durationSince(firstSeenAt, endAt) {
+  const start = parseLocalDateTime(firstSeenAt);
+  const end = parseLocalDateTime(endAt) || new Date();
+  if (!start || !end) return '';
+  const seconds = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
+  return formatDurationShort(seconds);
+}
+
+function countCurrentAvailablePoints() {
+  if (!DATA || !DATA.branches) return 0;
+  let total = 0;
+  DATA.branches.forEach(branch => {
+    const availability = branch.availability || {};
+    Object.values(availability).forEach(timeMap => {
+      total += Object.keys(timeMap || {}).length;
+    });
+  });
+  return total;
+}
+
+function renderDashboard() {
+  const el = document.getElementById('historyDashboard');
+  if (!DATA) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const today = (HISTORY && HISTORY.today) || { date: '', appeared_count: 0, disappeared_count: 0 };
+  const recentDays = (HISTORY && HISTORY.recent_days) || [];
+  const sevenDayAppeared = recentDays.reduce((sum, day) => sum + (day.appeared_count || 0), 0);
+  const currentAvailable = countCurrentAvailablePoints();
+  const topBranch = HISTORY && HISTORY.top_release_branches && HISTORY.top_release_branches[0];
+
+  el.innerHTML = [
+    '<div class="metric-card"><div class="metric-label">当前可约点位</div><div class="metric-value">' + currentAvailable + '</div><div class="metric-sub">按 分行 + 日期 + 时间 统计</div></div>',
+    '<div class="metric-card"><div class="metric-label">今日新增放号</div><div class="metric-value">' + (today.appeared_count || 0) + '</div><div class="metric-sub">' + escapeHtml(today.date || '今日') + ' 新出现的点位</div></div>',
+    '<div class="metric-card"><div class="metric-label">今日消失点位</div><div class="metric-value">' + (today.disappeared_count || 0) + '</div><div class="metric-sub">避免白点开预约页</div></div>',
+    '<div class="metric-card"><div class="metric-label">近 7 天新增</div><div class="metric-value">' + sevenDayAppeared + '</div><div class="metric-sub">' + (topBranch ? ('高频分行：' + escapeHtml(topBranch.branch_name)) : '高频分行：暂无') + '</div></div>'
+  ].join('');
 }
 
 function renderFilters() {
@@ -292,7 +515,7 @@ function renderTable() {
 
   if (!DATA || !DATA.dates || DATA.dates.length === 0) {
     content.innerHTML = '<div class="no-data">' + (DATA ? '暂无可预约时段' : '正在获取数据...') + '</div>';
-    summary.textContent = '';
+    if (activeTab === 'monitor') summary.textContent = '';
     return;
   }
 
@@ -312,15 +535,15 @@ function renderTable() {
       && !b.code.toLowerCase().includes(keyword)
       && !address.includes(keyword)
       && !tel.includes(keyword)) return false;
-    if (dates.length === 0 && times.length === 0) return true;
-    const avail = b.availability || {};
-    for (const d of dates) {
-      if (!avail[d]) continue;
-      for (const t of times) {
-        if (avail[d][t]) return true;
+      if (dates.length === 0 && times.length === 0) return true;
+      const avail = b.availability || {};
+      for (const d of dates) {
+        if (!avail[d]) continue;
+        for (const t of times) {
+          if (avail[d][t]) return true;
+        }
       }
-    }
-    return false;
+      return false;
   });
 
   let html = '';
@@ -359,16 +582,24 @@ function renderTable() {
 
         const addressText = b.address_cn || '暂无地址';
         const telText = b.tel_no || '暂无电话';
+        const mapUrls = buildMapUrls(b.name, b.address_cn || '');
+        const linksHtml = '<div class="branch-links"><a href="' + escapeHtml(mapUrls.google) + '" target="_blank" rel="noopener noreferrer">Google 地图</a><a href="' + escapeHtml(mapUrls.bing) + '" target="_blank" rel="noopener noreferrer">Bing 地图</a></div>';
 
-        html += '<tr><td><div class="branch-cell"><span class="branch-name">' + b.name + '</span><div class="branch-meta"><div>地址：' + addressText + '</div><div>电话：' + telText + '</div></div></div></td>';
+        html += '<tr><td><div class="branch-cell"><span class="branch-name">' + b.name + '</span><div class="branch-meta"><div>地址：' + addressText + '</div><div>电话：' + telText + '</div>' + linksHtml + '</div></div></td>';
         times.forEach(t => {
-          const status = da[t];
-          if (!status) {
+          const cell = da[t];
+          const status = cell && cell.status;
+          if (!cell || !status) {
             html += '<td class="cell-empty">-</td>';
           } else if (status === 'F') {
             html += '<td class="cell-f">满</td>';
           } else {
-            html += '<td class="cell-a">可约</td>';
+            const firstSeen = cell.first_seen_at || '';
+            const durationText = firstSeen ? durationSince(firstSeen, DATA && DATA.updated_at) : '';
+            const firstSeenText = firstSeen
+              ? ('<span class="cell-first-seen">捕获 ' + escapeHtml(firstSeen.slice(11) || firstSeen) + (durationText ? (' · 已持续 ' + escapeHtml(durationText)) : '') + '</span>')
+              : '';
+            html += '<td class="cell-a"><span class="cell-mark">可约</span>' + firstSeenText + '</td>';
             totalAvailable++;
           }
         });
@@ -391,12 +622,112 @@ function renderTable() {
   if (times.length > 0) parts.push(times.length + ' 个时段');
   if (branches.length > 0) parts.push(branches.length + ' 个分行');
   if (totalAvailable > 0) parts.push(totalAvailable + ' 个可约');
-  summary.textContent = parts.join(' · ');
+  if (activeTab === 'monitor') {
+    summary.textContent = parts.join(' · ');
+  }
+}
+
+function renderHistory() {
+  renderDayStats();
+  renderTopBranches();
+  renderRecentEvents();
+}
+
+function renderBranchCatalog() {
+  const el = document.getElementById('branchCatalog');
+  const keyword = catalogKeyword.toLowerCase();
+  const rows = (BRANCH_CATALOG || []).filter(item => {
+    if (!keyword) return true;
+    return [item.name, item.code, item.address_cn, item.tel_no]
+      .some(v => String(v || '').toLowerCase().includes(keyword));
+  });
+  if (activeTab === 'branches') {
+    document.getElementById('summaryLeft').textContent = rows.length + ' 个分行';
+  }
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="placeholder">暂无分行目录数据</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map(item => {
+    const badgeClass = item.is_enabled ? 'enabled' : 'disabled';
+    const badgeText = item.is_enabled ? '启用' : '禁用';
+    const address = item.address_cn ? '<div>地址：' + escapeHtml(item.address_cn) + '</div>' : '';
+    const tel = item.tel_no ? '<div>电话：' + escapeHtml(item.tel_no) + '</div>' : '';
+    const updated = item.updated_at ? '<div>更新：' + escapeHtml(item.updated_at) + '</div>' : '';
+    return '<div class="catalog-item">'
+      + '<div class="catalog-top"><div><div class="catalog-name">' + escapeHtml(item.name) + '</div><div class="catalog-code">' + escapeHtml(item.code) + '</div></div><span class="catalog-badge ' + badgeClass + '">' + badgeText + '</span></div>'
+      + '<div class="catalog-meta">' + address + tel + updated + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function renderDayStats() {
+  const el = document.getElementById('dayStats');
+  const days = (HISTORY && HISTORY.recent_days) || [];
+  if (days.length === 0) {
+    el.innerHTML = '<div class="placeholder">暂无历史统计</div>';
+    return;
+  }
+
+  el.innerHTML = days.map(day =>
+    '<div class="day-card">'
+    + '<div class="day-card-date">' + escapeHtml(day.date) + '</div>'
+    + '<div class="day-card-row"><span>新增</span><strong>+' + (day.appeared_count || 0) + '</strong></div>'
+    + '<div class="day-card-row"><span>消失</span><strong>-' + (day.disappeared_count || 0) + '</strong></div>'
+    + '</div>'
+  ).join('');
+}
+
+function renderTopBranches() {
+  const el = document.getElementById('topBranches');
+  const rows = (HISTORY && HISTORY.top_release_branches) || [];
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="placeholder">暂无放号排行</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map((item, idx) =>
+    '<div class="rank-item"><span class="rank-name">' + (idx + 1) + '. ' + escapeHtml(item.branch_name) + '</span><span class="rank-value">' + (item.release_count || 0) + ' 次</span></div>'
+  ).join('');
+}
+
+function renderRecentEvents() {
+  const el = document.getElementById('recentEvents');
+  const rows = (HISTORY && HISTORY.recent_events) || [];
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="placeholder">暂无历史变化记录</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map(item => {
+    const appeared = item.event_type === 'appeared';
+    const label = appeared ? '新增可预约' : '已不可预约';
+    const flagClass = appeared ? 'appeared' : 'disappeared';
+    const address = item.address_cn ? '<div>地址：' + escapeHtml(item.address_cn) + '</div>' : '';
+    const tel = item.tel_no ? '<div>电话：' + escapeHtml(item.tel_no) + '</div>' : '';
+    const links = [
+      item.google_maps_url ? '<a href="' + escapeHtml(item.google_maps_url) + '" target="_blank" rel="noopener noreferrer">Google 地图</a>' : '',
+      item.bing_maps_url ? '<a href="' + escapeHtml(item.bing_maps_url) + '" target="_blank" rel="noopener noreferrer">Bing 地图</a>' : ''
+    ].filter(Boolean).join('');
+    const duration = item.duration_secs ? '<div>存在时长：' + escapeHtml(formatDurationShort(item.duration_secs)) + '</div>' : '';
+
+    return '<div class="event-item">'
+      + '<div class="event-top"><span class="event-flag ' + flagClass + '">' + (appeared ? '🟢' : '🔴') + ' ' + label + '</span><span class="event-time">' + escapeHtml(item.event_at) + '</span></div>'
+      + '<div class="event-main"><div><strong>' + escapeHtml(item.branch_name) + '</strong> · ' + escapeHtml(item.appointment_date) + ' ' + escapeHtml(item.appointment_time) + '</div>' + duration + address + tel + '</div>'
+      + (links ? '<div class="event-links">' + links + '</div>' : '')
+      + '</div>';
+  }).join('');
 }
 
 document.getElementById('branchSearch').addEventListener('input', function(e) {
   branchKeyword = e.target.value;
   renderTable();
+});
+
+document.getElementById('catalogSearch').addEventListener('input', function(e) {
+  catalogKeyword = e.target.value;
+  renderBranchCatalog();
 });
 
 fetchData();

@@ -1,7 +1,6 @@
 use chrono::Local;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::config::base_dir;
 use crate::models::{BranchInfo, ChangeEntry, FieldDiff, SlotDetail};
 
 /// 从 dateQuota 响应中提取可预约日期（仅状态为 "A"）
@@ -181,85 +180,165 @@ pub fn diff_json(
     diffs
 }
 
-/// 将 SlotDetail 列表格式化为可读的通知消息文本
-pub fn format_details_message(details: &[SlotDetail]) -> String {
-    let mut grouped: BTreeMap<(String, String), (String, String, BTreeMap<String, BTreeSet<String>>)> =
-        BTreeMap::new();
+/// 判断当前深度查询结果是否至少覆盖了所有可预约日期
+pub fn details_cover_dates(expected_dates: &[String], details: &[SlotDetail]) -> bool {
+    let expected: BTreeSet<String> = expected_dates.iter().map(|d| format_date(d)).collect();
+    if expected.is_empty() {
+        return true;
+    }
+
+    let actual: BTreeSet<String> = details.iter().map(|detail| detail.date.clone()).collect();
+    expected.into_iter().all(|date| actual.contains(&date))
+}
+
+/// 对比两轮完整明细，返回新增可约与失约的“分行-日期-时间点”
+pub fn diff_detail_snapshots(
+    old_details: &[SlotDetail],
+    new_details: &[SlotDetail],
+) -> (Vec<SlotDetail>, Vec<SlotDetail>) {
+    #[derive(Clone)]
+    struct DetailPoint {
+        date: String,
+        time: String,
+        branch: BranchInfo,
+    }
+
+    fn flatten(details: &[SlotDetail]) -> BTreeMap<(String, String, String), DetailPoint> {
+        let mut map = BTreeMap::new();
+        for slot in details {
+            for branch in &slot.branches {
+                map.insert(
+                    (branch.code.clone(), slot.date.clone(), slot.time.clone()),
+                    DetailPoint {
+                        date: slot.date.clone(),
+                        time: slot.time.clone(),
+                        branch: branch.clone(),
+                    },
+                );
+            }
+        }
+        map
+    }
+
+    fn to_slot_details(points: Vec<DetailPoint>) -> Vec<SlotDetail> {
+        points
+            .into_iter()
+            .map(|point| SlotDetail {
+                date: point.date,
+                time: point.time,
+                time_slot_id: String::new(),
+                branches: vec![point.branch],
+            })
+            .collect()
+    }
+
+    let old_map = flatten(old_details);
+    let new_map = flatten(new_details);
+
+    let added = new_map
+        .iter()
+        .filter(|(key, _)| !old_map.contains_key(*key))
+        .map(|(_, point)| point.clone())
+        .collect();
+
+    let removed = old_map
+        .iter()
+        .filter(|(key, _)| !new_map.contains_key(*key))
+        .map(|(_, point)| point.clone())
+        .collect();
+
+    (to_slot_details(added), to_slot_details(removed))
+}
+
+/// 统计当前可预约的具体点位数量（分行 + 日期 + 时间）
+pub fn count_detail_points(details: &[SlotDetail]) -> usize {
+    details.iter().map(|slot| slot.branches.len()).sum()
+}
+
+fn format_compact_details(details: &[SlotDetail]) -> String {
+    let mut date_map: BTreeMap<String, BTreeMap<String, BTreeSet<String>>> = BTreeMap::new();
+
+    for slot in details {
+        let times = date_map.entry(slot.date.clone()).or_default();
+        let branches = times.entry(slot.time.clone()).or_default();
+        for branch in &slot.branches {
+            branches.insert(branch.name.clone());
+        }
+    }
+
+    let mut sections = Vec::new();
+    for (date, time_map) in date_map {
+        let mut lines = vec![format!("### {}", date)];
+        for (time, branches) in time_map {
+            for branch in branches {
+                lines.push(format!("- `{}` {}", time, branch));
+            }
+        }
+        sections.push(lines.join("\n"));
+    }
+
+    sections.join("\n\n")
+}
+
+fn format_branch_contacts_section(details: &[SlotDetail]) -> String {
+    let mut branch_map: BTreeMap<(String, String), (String, String)> = BTreeMap::new();
 
     for slot in details {
         for branch in &slot.branches {
-            let entry = grouped
+            let entry = branch_map
                 .entry((branch.name.clone(), branch.code.clone()))
-                .or_insert_with(|| {
-                    (
-                        branch.address_cn.clone(),
-                        branch.tel_no.clone(),
-                        BTreeMap::new(),
-                    )
-                });
+                .or_insert_with(|| (branch.address_cn.clone(), branch.tel_no.clone()));
             if entry.0.is_empty() && !branch.address_cn.is_empty() {
                 entry.0 = branch.address_cn.clone();
             }
             if entry.1.is_empty() && !branch.tel_no.is_empty() {
                 entry.1 = branch.tel_no.clone();
             }
-            entry
-                .2
-                .entry(slot.date.clone())
-                .or_default()
-                .insert(slot.time.clone());
         }
     }
 
-    let mut lines = Vec::new();
-    for ((name, _code), (address_cn, tel_no, date_map)) in grouped {
-        if !lines.is_empty() {
-            lines.push(String::new());
-        }
-        lines.push(format!("\u{1f3e6} {}", name));
-        lines.push(format!(
-            "地址：{}",
-            if address_cn.is_empty() { "(暂无)" } else { &address_cn }
+    if branch_map.is_empty() {
+        return String::new();
+    }
+
+    let mut sections = vec!["### 📍 分行联系信息".to_string()];
+    for ((name, _code), (address_cn, tel_no)) in branch_map {
+        let (google_url, bing_url) = crate::notifier::build_map_links(&name, &address_cn);
+
+        sections.push(format!(
+            "#### {}\n- 地址：{}\n- 电话：{}\n- [Google 地图]({})\n- [Bing 地图]({})",
+            name,
+            if address_cn.is_empty() { "(暂无)" } else { &address_cn },
+            if tel_no.is_empty() { "(暂无)" } else { &tel_no },
+            google_url,
+            bing_url
         ));
-        lines.push(format!(
-            "电话：{}",
-            if tel_no.is_empty() { "(暂无)" } else { &tel_no }
-        ));
-        lines.push(String::new());
-
-        for (date, times) in date_map {
-            lines.push(format!("  \u{1f4c5} {}", date));
-            for time in times {
-                lines.push(format!("  \u{23f0} {}", time));
-            }
-            lines.push(String::new());
-        }
     }
 
-    while matches!(lines.last(), Some(last) if last.is_empty()) {
-        lines.pop();
-    }
-    lines.join("\n")
+    sections.join("\n\n")
 }
 
-/// 将 dateQuota 相关的 FieldDiff 格式化为人类可读的变化描述
-pub fn format_date_quota_changes(diffs: &[FieldDiff]) -> Vec<String> {
-    let mut messages = Vec::new();
-    for d in diffs {
-        if d.path.starts_with("dateQuota.") {
-            let date = d.path.strip_prefix("dateQuota.").unwrap_or(&d.path);
-            let formatted = format_date(date);
-            let old_str = d.old_value.as_str().unwrap_or("\u{65e0}");
-            let new_str = d.new_value.as_str().unwrap_or("\u{65e0}");
-            let label = match (old_str, new_str) {
-                ("F", s) if s != "F" => format!("\u{1f7e2} {} \u{51fa}\u{73b0}\u{53ef}\u{9884}\u{7ea6}", formatted),
-                (s, "F") if s != "F" => format!("\u{1f534} {} \u{5df2}\u{7ea6}\u{6ee1}", formatted),
-                _ => format!("{} : {} \u{2192} {}", formatted, old_str, new_str),
-            };
-            messages.push(label);
-        }
+/// 将新增/失约的明细差异格式化为 Bark 文本
+pub fn format_detail_change_message(added: &[SlotDetail], removed: &[SlotDetail]) -> String {
+    let mut sections = Vec::new();
+    if !added.is_empty() {
+        sections.push(format!("## 🟢 新增可预约（{}）", added.len()));
+        sections.push(format_compact_details(added));
     }
-    messages
+    if !removed.is_empty() {
+        sections.push(format!("## 🔴 已不可预约（{}）", removed.len()));
+        sections.push(format_compact_details(removed));
+    }
+
+    let mut merged = Vec::new();
+    merged.extend_from_slice(added);
+    merged.extend_from_slice(removed);
+    let contacts = format_branch_contacts_section(&merged);
+    if !contacts.is_empty() {
+        sections.push(contacts);
+    }
+
+    sections.join("\n\n")
 }
 
 /// 将变化记录追加写入当天的 JSONL 日志文件
@@ -272,7 +351,7 @@ pub fn append_change_log(
         return Ok(());
     }
     let today = Local::now().format("%Y%m%d").to_string();
-    let log_path = base_dir().join(format!("changes_{}.jsonl", today));
+    let log_path = crate::config::log_dir().join(format!("changes_{}.jsonl", today));
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)

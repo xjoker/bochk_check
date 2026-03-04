@@ -165,20 +165,56 @@ pub fn persist_jsonl_enabled() -> bool {
     PERSIST_JSONL_ENABLED.load(Ordering::Relaxed)
 }
 
-pub fn base_dir() -> PathBuf {
-    let exe = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
-    if let Some(ref dir) = exe {
-        if dir.join("config.toml").exists() {
-            return dir.clone();
+fn find_base_dir(start: &PathBuf) -> Option<PathBuf> {
+    for dir in start.ancestors() {
+        let candidate = dir.to_path_buf();
+        if candidate.join("data").join("config").exists()
+            || candidate.join("Cargo.toml").exists()
+            || candidate.join("AGENTS.md").exists()
+        {
+            return Some(candidate);
         }
     }
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    None
+}
+
+pub fn base_dir() -> PathBuf {
+    if let Ok(dir) = std::env::current_dir() {
+        if let Some(found) = find_base_dir(&dir) {
+            return found;
+        }
+    }
+
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+    {
+        if let Some(found) = find_base_dir(&dir) {
+            return found;
+        }
+    }
+
+    PathBuf::from(".")
+}
+
+pub fn config_path() -> PathBuf {
+    base_dir().join("data").join("config").join("app.toml")
+}
+
+pub fn data_file_dir() -> PathBuf {
+    let dir = base_dir().join("data").join("file");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+pub fn log_dir() -> PathBuf {
+    let dir = base_dir().join("data").join("logs");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
 }
 
 pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error + Send + Sync>> {
-    let config_path = base_dir().join("config.toml");
+    let config_path = config_path();
     let mut config = if config_path.exists() {
         let content = std::fs::read_to_string(&config_path)?;
         toml::from_str(&content)?

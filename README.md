@@ -58,7 +58,7 @@ cargo build --release
 ### 2. 复制配置
 
 ```bash
-cp config.toml.example config.toml
+cp data/config/app.toml.example data/config/app.toml
 ```
 
 ### 3. 编辑配置
@@ -76,7 +76,7 @@ cp config.toml.example config.toml
 ./target/release/bochk_check
 ```
 
-默认情况下，程序会读取“可执行文件同目录”的 `config.toml`；如果该位置不存在，则回退到当前工作目录。若两个位置都没有配置文件，程序会直接使用内置默认值启动。
+默认情况下，程序会读取基准目录下的 `data/config/app.toml`。基准目录优先取当前工作目录（若存在 `data/config`、`Cargo.toml` 或 `AGENTS.md`），否则回退到可执行文件所在目录。若配置文件不存在，程序会直接使用内置默认值启动。
 
 ### 5. 查看状态页
 
@@ -90,7 +90,7 @@ http://127.0.0.1:32141
 
 ## 配置说明
 
-配置文件使用 TOML，文件名固定为 `config.toml`。该文件是可选的；未提供时会使用默认值，再由环境变量覆盖。
+配置文件使用 TOML，固定路径为 `data/config/app.toml`。该文件是可选的；未提供时会使用默认值，再由环境变量覆盖。
 
 ```toml
 [proxy]
@@ -133,7 +133,7 @@ port = 32141
 
 ### 环境变量覆盖
 
-程序支持使用 `BOCHK_` 前缀环境变量覆盖配置；环境变量优先级高于 `config.toml`。若未提供配置文件，也可完全通过环境变量和默认值运行。
+程序支持使用 `BOCHK_` 前缀环境变量覆盖配置；环境变量优先级高于 `data/config/app.toml`。若未提供配置文件，也可完全通过环境变量和默认值运行。
 
 | 环境变量 | 对应配置 | 默认值 |
 | --- | --- | --- |
@@ -164,21 +164,21 @@ port = 32141
 
 默认情况下，程序不会额外写入文件日志，仅输出到 `stderr`。
 
-当 `logging.persist_jsonl=true` 时，程序会在基准目录额外写入以下调试文件：
+当 `logging.persist_jsonl=true` 时，程序会在 `data/logs/` 目录额外写入以下调试文件：
 
 - `api_log_YYYYMMDD.jsonl`：每次接口请求的原始响应
 - `changes_YYYYMMDD.jsonl`：首轮结果与后续变化记录
 
-这里的“基准目录”与配置加载逻辑一致：
-
-- 若可执行文件所在目录存在 `config.toml`，则使用可执行文件目录
-- 否则使用当前工作目录
+这些调试文件属于运行期数据文件，不会再落在项目根目录。
 
 ### 通知策略
 
-- 首次启动若已检测到可预约日期，会立即推送一次
-- `dateQuota` 发生变化时，会格式化出“出现可预约 / 已约满”等消息
-- 若有新可预约日期，并且深度查询到分行，会在同一条通知中附带分行详情
+- 不再发送“启动即发现可预约”的专用通知；重启后只按持久化快照差异决定是否推送
+- 仅在完成整轮深度查询且结果覆盖全部可预约日期后，才允许发送 Bark
+- Bark 按“分行 + 日期 + 时间点”的完整明细快照做 diff，而不是只看 `dateQuota`
+- 标题会优先显示“当前总可约点位数”，并附带本轮新增/消失数量
+- 正文会列出具体分行、日期、时间，并在尾部附分行联系信息与地图链接
+- 分行主数据会独立走“分行优先”接口链自动刷新，默认按自然日最多同步一次，不影响主监控判定
 - 连续失败达到 `monitor.max_fail_count` 后会发送异常告警，之后每额外增加 10 次失败会重复告警
 
 ## BOCHK 接口说明
@@ -711,16 +711,35 @@ flowchart LR
 | --- | --- | --- |
 | `/` | `GET` | 内置状态页（静态 HTML） |
 | `/api/status` | `GET` | 当前监控状态 JSON |
+| `/api/history` | `GET` | 历史变化汇总与近 7 天统计 |
+| `/api/branches` | `GET` | 当前分行目录（来自 SQLite `branches` 表） |
 
 `/api/status` 主要字段：
 
 - `updated_at`：最近一次刷新时间
+- `last_release_at`：最近一次出现新增可约点位的时间
 - `monitoring`：是否处于运行状态
 - `total_checks`：成功请求次数
 - `date_quota`：原始日期状态映射
 - `dates`：格式化后的日期列表
 - `time_slots`：已探测到的时间列表
 - `branches`：按分行聚合后的可预约情况
+
+`/api/history` 主要字段：
+
+- `today`：今日新增/消失点位汇总
+- `recent_days`：近 7 天按天聚合的新增/消失统计
+- `recent_events`：最近变化记录（分行、日期、时间、地址、电话、地图链接）
+- `top_release_branches`：近 7 天新增放号次数最多的分行
+
+`/api/branches` 主要字段：
+
+- `code`：分行代码
+- `name`：分行名称
+- `address_cn`：中文地址
+- `tel_no`：联系电话
+- `is_enabled`：是否启用（禁用分行不会参与通知和展示）
+- `updated_at`：该分行资料最近一次写入数据库的时间
 
 ## 验证
 
@@ -768,7 +787,11 @@ cargo build --release --target x86_64-pc-windows-gnu
 │   ├── notifier.rs    # Bark 推送
 │   ├── web.rs         # Web 服务
 │   └── web.html       # 状态页前端
-├── config.toml.example
+├── data/
+│   ├── config/
+│   │   └── app.toml.example
+│   ├── file/
+│   └── logs/
 ├── Cargo.toml
 ├── README.md
 └── AGENTS.md
@@ -797,4 +820,3 @@ cargo build --release --target x86_64-pc-windows-gnu
 ## 当前限制
 
 - 仓库当前未提供 `Dockerfile`
-- 若启用 `logging.persist_jsonl`，JSONL 日志目前直接写入基准目录，而不是单独的 `data/file/` 子目录

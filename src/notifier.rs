@@ -5,7 +5,7 @@ pub async fn send_bark_notifications(
     bark_client: &reqwest::Client,
     bark_urls: &[String],
     title: &str,
-    body: &str,
+    markdown: &str,
 ) {
     if bark_urls.is_empty() {
         return;
@@ -14,12 +14,15 @@ pub async fn send_bark_notifications(
         if bark_url.is_empty() {
             continue;
         }
-        let url = format!(
-            "{}/{}?group=bochk&sound=minuet&level=timeSensitive",
-            bark_url.trim_end_matches('/'),
-            urlencoding(title, body),
-        );
-        match bark_client.get(&url).send().await {
+        let url = bark_url.trim_end_matches('/').to_string();
+        let payload = serde_json::json!({
+            "title": title,
+            "markdown": markdown,
+            "group": "bochk",
+            "sound": "minuet",
+            "level": "timeSensitive",
+        });
+        match bark_client.post(&url).json(&payload).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
                     info!("Bark 通知已发送: {}", mask_url(bark_url));
@@ -55,11 +58,6 @@ pub fn mask_url(url: &str) -> String {
     }
 }
 
-/// 将 title 和 body 进行 URL 编码后拼接为路径片段
-pub fn urlencoding(title: &str, body: &str) -> String {
-    format!("{}/{}", urlenc(title), urlenc(body))
-}
-
 /// 对字符串进行百分号编码（RFC 3986 非保留字符不编码）
 pub fn urlenc(s: &str) -> String {
     let mut result = String::new();
@@ -72,4 +70,14 @@ pub fn urlenc(s: &str) -> String {
         }
     }
     result
+}
+
+/// 用“香港 + 地址 + 分行名称”生成地图搜索链接
+pub fn build_map_links(name: &str, address_cn: &str) -> (String, String) {
+    let query = format!("香港 {} {}", address_cn, name).trim().to_string();
+    let encoded = urlenc(&query);
+    (
+        format!("https://www.google.com/maps/search/?api=1&query={}", encoded),
+        format!("https://www.bing.com/maps?q={}", encoded),
+    )
 }

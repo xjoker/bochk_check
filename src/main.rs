@@ -4,6 +4,7 @@ mod models;
 mod monitor;
 mod notifier;
 mod parser;
+mod state;
 mod web;
 
 use std::sync::Arc;
@@ -14,13 +15,19 @@ use tokio::sync::RwLock;
 use tracing::{error, info};
 
 use config::{load_config, set_persist_jsonl_enabled};
-use client::{build_client, fetch_date_quota, initialize_session};
+use client::{
+    build_client, fetch_date_quota, initialize_session,
+};
 use models::{build_web_data, ChangeEntry, SharedWebData, SlotDetail, WebData};
 use monitor::drill_down;
 use notifier::send_bark_notifications;
 use parser::{
-    append_change_log, diff_json, extract_available_dates, format_date,
-    format_date_quota_changes, format_details_message,
+    append_change_log, count_detail_points, details_cover_dates, diff_detail_snapshots, diff_json,
+    extract_available_dates, format_date, format_detail_change_message,
+};
+use state::{
+    filter_enabled_details, load_current_slot_first_seen_map, load_current_slots,
+    load_runtime_state, persist_snapshot_diff, save_runtime_state, RuntimeState,
 };
 use web::start_web_server;
 
@@ -53,6 +60,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tokio::spawn(start_web_server(port, wd));
     }
 
+    let mut runtime_state = match load_runtime_state() {
+        Ok(state) => state,
+        Err(e) => {
+            error!("加载运行时状态失败: {}", e);
+            RuntimeState::default()
+        }
+    };
+    let mut last_notified_details = match load_current_slots() {
+        Ok(details) => details,
+        Err(e) => {
+            error!("加载当前可预约快照失败: {}", e);
+            Vec::new()
+        }
+    };
+
     let mut last_response: Option<serde_json::Value> = None;
     let mut last_details: Vec<SlotDetail> = Vec::new();
     let mut fail_count: u32 = 0;
@@ -60,6 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let started_at = std::time::Instant::now();
     let mut total_checks: u64 = 0;
     let mut last_good_config = init_config.clone();
+    let mut last_release_at = runtime_state.last_release_at.clone();
 
     loop {
         let config = match load_config() {
@@ -79,14 +102,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         let cycle_result = async {
             let cycle_client = build_client(&config.proxy.url)?;
-            initialize_session(&cycle_client).await?;
+            let _ = initialize_session(&cycle_client).await?;
             let current = fetch_date_quota(&cycle_client).await?;
-            Ok::<_, Box<dyn std::error::Error + Send + Sync>>((cycle_client, current))
+            Ok::<_, Box<dyn std::error::Error + Send + Sync>>(current)
         }
         .await;
 
         match cycle_result {
-            Ok((cycle_client, current)) => {
+            Ok(current) => {
                 if fail_count > 0 {
                     info!("请求恢复正常（此前连续失败 {} 次）", fail_count);
                     fail_count = 0;
@@ -107,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         available.len(),
                         fetch_elapsed
                     );
-                    let d = drill_down(&cycle_client, &available).await;
+                    let d = drill_down(&config.proxy.url, &available).await;
                     Some(d)
                 } else {
                     None
@@ -121,42 +144,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     } else {
                         info!("[{}] 检测到 {} 处变化 (fetch: {}ms)", now, diffs.len(), fetch_elapsed);
 
-                        let quota_msgs = format_date_quota_changes(&diffs);
-                        let has_new_available =
-                            quota_msgs.iter().any(|m| m.contains("出现可预约"));
-
-                        if !quota_msgs.is_empty() {
-                            let mut body = quota_msgs.join("\n");
-
-                            if has_new_available {
-                                match details {
-                                    Some(ref d) if !d.is_empty() => {
-                                        body.push_str("\n\n");
-                                        body.push_str(&format_details_message(d));
-                                    }
-                                    Some(_) => {
-                                        body.push_str(
-                                            "\n\n(已确认存在可预约日期，但暂未获取到分行明细)",
-                                        );
-                                    }
-                                    None => {
-                                        body.push_str(
-                                            "\n\n(深度查询未执行，正在后续轮次探测)",
-                                        );
-                                    }
-                                }
-                            }
-
-                            info!("推送通知:\n{}", body);
-                            send_bark_notifications(
-                                &bark_client,
-                                &config.bark.urls,
-                                "BOCHK 预约变化",
-                                &body,
-                            )
-                            .await;
-                        }
-
                         Some(diffs)
                     }
                 } else {
@@ -165,40 +152,75 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         info!("当前 dateQuota: {}", quota);
                     }
 
-                    if has_available {
-                        let mut body = format!(
-                            "启动即发现可预约日期: {}",
-                            available
-                                .iter()
-                                .map(|d| format_date(d))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        );
-                        if let Some(ref d) = details {
-                            if !d.is_empty() {
-                                body.push_str("\n\n");
-                                body.push_str(&format_details_message(d));
-                            } else {
-                                body.push_str("\n\n(已确认存在可预约日期，但暂未获取到分行明细)");
-                            }
-                        }
-                        send_bark_notifications(
-                            &bark_client,
-                            &config.bark.urls,
-                            "BOCHK 有号!",
-                            &body,
-                        )
-                        .await;
-                    }
-
                     None
                 };
 
-                // 更新 last_details 缓存（在 details 被 move 之前）
-                if let Some(ref d) = details {
-                    last_details = d.clone();
+                let raw_current_details = details.clone().unwrap_or_default();
+                let current_details = match filter_enabled_details(&raw_current_details) {
+                    Ok(filtered) => filtered,
+                    Err(e) => {
+                        error!("过滤已禁用分行失败: {}", e);
+                        raw_current_details.clone()
+                    }
+                };
+                let details_complete = details_cover_dates(&available, &raw_current_details);
+
+                if has_available && !details_complete {
+                    info!(
+                        "本轮深度查询未覆盖全部可预约日期，跳过 Bark 通知: {}",
+                        available
+                            .iter()
+                            .map(|d| format_date(d))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                } else {
+                    let (added, removed) =
+                        diff_detail_snapshots(&last_notified_details, &current_details);
+                    let body = format_detail_change_message(&added, &removed);
+
+                    if !body.is_empty() {
+                        if !added.is_empty() {
+                            last_release_at = now.clone();
+                            runtime_state.last_release_at = last_release_at.clone();
+                            if let Err(e) = save_runtime_state(&runtime_state) {
+                                error!("写入运行时状态失败: {}", e);
+                            }
+                        }
+                        let current_total = count_detail_points(&current_details);
+                        let title = format!(
+                            "BOCHK 当前可约 {} 个（+{} / -{}）",
+                            current_total,
+                            added.len(),
+                            removed.len()
+                        );
+                        info!("推送明细变化通知:\n{}", body);
+                        send_bark_notifications(
+                            &bark_client,
+                            &config.bark.urls,
+                            &title,
+                            &body,
+                        )
+                        .await;
+                    } else {
+                        info!("[{}] 分行时段明细无变化", now);
+                    }
                 }
-                if !has_available {
+
+                if !has_available || details_complete {
+                    if let Err(e) =
+                        persist_snapshot_diff(&last_notified_details, &current_details, &now)
+                    {
+                        error!("写入 SQLite 快照失败: {}", e);
+                    } else {
+                        last_notified_details = current_details.clone();
+                    }
+                }
+
+                // 更新 last_details 缓存（在 details 被 move 之前）
+                if has_available {
+                    last_details = current_details.clone();
+                } else {
                     last_details.clear();
                 }
 
@@ -210,7 +232,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             dq.insert(k.clone(), v.as_str().unwrap_or("F").to_string());
                         }
                     }
-                    let wd = build_web_data(&last_details, &dq, total_checks);
+                    let first_seen_map = match load_current_slot_first_seen_map() {
+                        Ok(map) => map,
+                        Err(e) => {
+                            error!("读取当前点位首次捕获时间失败: {}", e);
+                            std::collections::BTreeMap::new()
+                        }
+                    };
+                    let wd = build_web_data(
+                        &last_details,
+                        &dq,
+                        total_checks,
+                        &last_release_at,
+                        &first_seen_map,
+                    );
                     let mut lock = web_data.write().await;
                     *lock = wd;
                 }
@@ -219,7 +254,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let is_first = last_response.is_none();
                 if is_first || diff.is_some() {
                     let entry = ChangeEntry {
-                        timestamp: now,
+                        timestamp: now.clone(),
                         raw_response: current.clone(),
                         diff,
                         available_dates: available.clone(),
