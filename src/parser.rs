@@ -303,15 +303,14 @@ fn format_branch_contacts_section(details: &[SlotDetail]) -> String {
 
     let mut sections = vec!["### 📍 分行联系信息".to_string()];
     for ((name, _code), (address_cn, tel_no)) in branch_map {
-        let (google_url, bing_url) = crate::notifier::build_map_links(&name, &address_cn);
+        let google_url = crate::notifier::build_map_link(&name, &address_cn);
 
         sections.push(format!(
-            "#### {}\n- 地址：{}\n- 电话：{}\n- [Google 地图]({})\n- [Bing 地图]({})",
+            "#### {}\n- 地址：{}\n- 电话：{}\n- [Google 地图]({})",
             name,
             if address_cn.is_empty() { "(暂无)" } else { &address_cn },
             if tel_no.is_empty() { "(暂无)" } else { &tel_no },
-            google_url,
-            bing_url
+            google_url
         ));
     }
 

@@ -332,8 +332,7 @@ function buildMapUrls(branchName, addressCn) {
   const query = ['香港', addressCn || '', branchName || ''].filter(Boolean).join(' ');
   const encoded = encodeURIComponent(query);
   return {
-    google: 'https://www.google.com/maps/search/?api=1&query=' + encoded,
-    bing: 'https://www.bing.com/maps?q=' + encoded
+    google: 'https://www.google.com/maps/search/?api=1&query=' + encoded
   };
 }
 
@@ -583,7 +582,7 @@ function renderTable() {
         const addressText = b.address_cn || '暂无地址';
         const telText = b.tel_no || '暂无电话';
         const mapUrls = buildMapUrls(b.name, b.address_cn || '');
-        const linksHtml = '<div class="branch-links"><a href="' + escapeHtml(mapUrls.google) + '" target="_blank" rel="noopener noreferrer">Google 地图</a><a href="' + escapeHtml(mapUrls.bing) + '" target="_blank" rel="noopener noreferrer">Bing 地图</a></div>';
+        const linksHtml = '<div class="branch-links"><a href="' + escapeHtml(mapUrls.google) + '" target="_blank" rel="noopener noreferrer">Google 地图</a></div>';
 
         html += '<tr><td><div class="branch-cell"><span class="branch-name">' + b.name + '</span><div class="branch-meta"><div>地址：' + addressText + '</div><div>电话：' + telText + '</div>' + linksHtml + '</div></div></td>';
         times.forEach(t => {
@@ -707,8 +706,7 @@ function renderRecentEvents() {
     const address = item.address_cn ? '<div>地址：' + escapeHtml(item.address_cn) + '</div>' : '';
     const tel = item.tel_no ? '<div>电话：' + escapeHtml(item.tel_no) + '</div>' : '';
     const links = [
-      item.google_maps_url ? '<a href="' + escapeHtml(item.google_maps_url) + '" target="_blank" rel="noopener noreferrer">Google 地图</a>' : '',
-      item.bing_maps_url ? '<a href="' + escapeHtml(item.bing_maps_url) + '" target="_blank" rel="noopener noreferrer">Bing 地图</a>' : ''
+      item.google_maps_url ? '<a href="' + escapeHtml(item.google_maps_url) + '" target="_blank" rel="noopener noreferrer">Google 地图</a>' : ''
     ].filter(Boolean).join('');
     const duration = item.duration_secs ? '<div>存在时长：' + escapeHtml(formatDurationShort(item.duration_secs)) + '</div>' : '';
 

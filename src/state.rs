@@ -9,7 +9,7 @@ use crate::models::{
     WebHistoryDaySummary, WebHistoryEvent,
 };
 
-const DB_SCHEMA_VERSION: i64 = 2;
+const DB_SCHEMA_VERSION: i64 = 3;
 
 #[derive(Clone, Default)]
 pub struct RuntimeState {
@@ -38,7 +38,6 @@ fn recreate_schema(conn: &Connection) -> Result<(), Box<dyn std::error::Error + 
             address_cn TEXT NOT NULL,
             tel_no TEXT NOT NULL,
             google_maps_url TEXT NOT NULL,
-            bing_maps_url TEXT NOT NULL,
             is_enabled INTEGER NOT NULL DEFAULT 1,
             updated_at TEXT NOT NULL
         );
@@ -90,20 +89,17 @@ fn upsert_branch(
     branch: &BranchInfo,
     event_at: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (google_maps_url, bing_maps_url) =
-        crate::notifier::build_map_links(&branch.name, &branch.address_cn);
+    let google_maps_url = crate::notifier::build_map_link(&branch.name, &branch.address_cn);
     tx.execute(
         r#"
         INSERT INTO branches (
-            branch_code, branch_name, address_cn, tel_no,
-            google_maps_url, bing_maps_url, is_enabled, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7)
+            branch_code, branch_name, address_cn, tel_no, google_maps_url, is_enabled, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)
         ON CONFLICT(branch_code) DO UPDATE SET
             branch_name=excluded.branch_name,
             address_cn=excluded.address_cn,
             tel_no=excluded.tel_no,
             google_maps_url=excluded.google_maps_url,
-            bing_maps_url=excluded.bing_maps_url,
             updated_at=excluded.updated_at
         "#,
         params![
@@ -112,7 +108,6 @@ fn upsert_branch(
             branch.address_cn,
             branch.tel_no,
             google_maps_url,
-            bing_maps_url,
             event_at
         ],
     )?;
@@ -548,8 +543,7 @@ pub fn load_web_history(
             COALESCE(b.branch_name, e.branch_code),
             COALESCE(b.address_cn, ''),
             COALESCE(b.tel_no, ''),
-            COALESCE(b.google_maps_url, ''),
-            COALESCE(b.bing_maps_url, '')
+            COALESCE(b.google_maps_url, '')
         FROM slot_events e
         LEFT JOIN branches b ON b.branch_code = e.branch_code
         ORDER BY e.id DESC
@@ -568,7 +562,6 @@ pub fn load_web_history(
             row.get::<_, String>(7)?,
             row.get::<_, String>(8)?,
             row.get::<_, String>(9)?,
-            row.get::<_, String>(10)?,
         ))
     })?;
 
@@ -598,7 +591,6 @@ pub fn load_web_history(
             address_cn,
             tel_no,
             google_maps_url,
-            bing_maps_url,
         ) = row?;
 
         let appeared_at = duration_stmt
@@ -623,7 +615,6 @@ pub fn load_web_history(
             address_cn,
             tel_no,
             google_maps_url,
-            bing_maps_url,
         });
     }
 

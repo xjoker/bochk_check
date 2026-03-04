@@ -72,12 +72,9 @@ pub fn urlenc(s: &str) -> String {
     result
 }
 
-/// 用“香港 + 地址 + 分行名称”生成地图搜索链接
-pub fn build_map_links(name: &str, address_cn: &str) -> (String, String) {
+/// 用“香港 + 地址 + 分行名称”生成 Google 地图搜索链接
+pub fn build_map_link(name: &str, address_cn: &str) -> String {
     let query = format!("香港 {} {}", address_cn, name).trim().to_string();
     let encoded = urlenc(&query);
-    (
-        format!("https://www.google.com/maps/search/?api=1&query={}", encoded),
-        format!("https://www.bing.com/maps?q={}", encoded),
-    )
+    format!("https://www.google.com/maps/search/?api=1&query={}", encoded)
 }

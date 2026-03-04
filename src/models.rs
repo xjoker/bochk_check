@@ -73,7 +73,6 @@ pub struct WebHistoryEvent {
     pub address_cn: String,
     pub tel_no: String,
     pub google_maps_url: String,
-    pub bing_maps_url: String,
 }
 
 #[derive(serde::Serialize, Clone, Default)]
