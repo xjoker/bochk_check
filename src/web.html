@@ -44,36 +44,48 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .metric-sub{font-size:12px;color:#7f8fa2;margin-top:6px;line-height:1.5}
 .content{padding:24px}
 .panel-title{font-size:15px;font-weight:700;color:#18344f;margin-bottom:12px}
-.history-grid{padding:0 24px 24px;display:grid;grid-template-columns:1.3fr .9fr;gap:16px}
+.history-grid{padding:0 24px 24px;display:grid;grid-template-columns:1.3fr .9fr;gap:16px;align-items:start}
+.history-top-grid{padding:0 24px 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;align-items:start}
 .history-panel{background:#fff;border:1px solid #e3eaf1;border-radius:14px;padding:16px;box-shadow:0 10px 24px rgba(26,58,92,.05)}
 .day-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
 .day-card{background:#f8fbfd;border:1px solid #e4edf5;border-radius:12px;padding:12px}
 .day-card-date{font-size:12px;color:#677789;font-weight:600;margin-bottom:8px}
 .day-card-row{font-size:12px;color:#5c6d80;display:flex;justify-content:space-between;gap:8px}
-.rank-list,.event-list{display:flex;flex-direction:column;gap:10px}
-.catalog-list{display:flex;flex-direction:column;gap:10px;max-height:420px;overflow:auto}
+.rank-list{display:flex;flex-direction:column;gap:8px}
+.event-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:10px;align-items:start}
+.catalog-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
 .rank-item{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:10px;background:#f8fbfd;border:1px solid #e4edf5;font-size:13px}
-.catalog-item{padding:10px 12px;border-radius:10px;background:#f8fbfd;border:1px solid #e4edf5}
-.catalog-top{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px}
-.catalog-name{font-size:13px;font-weight:700;color:#1a3a5c}
+.catalog-item{padding:12px;border-radius:12px;background:#f8fbfd;border:1px solid #e4edf5;display:grid;gap:8px;align-content:start}
+.catalog-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:0}
+.catalog-name{font-size:14px;font-weight:700;color:#1a3a5c}
 .catalog-code{font-size:12px;color:#7f8fa2}
-.catalog-meta{font-size:12px;color:#5c6d80;line-height:1.5}
+.catalog-meta{font-size:12px;color:#5c6d80;line-height:1.5;display:grid;gap:2px}
 .catalog-badge{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
 .catalog-badge.enabled{background:#e8f5e9;color:#2e7d32}
 .catalog-badge.disabled{background:#ffebee;color:#c62828}
+.catalog-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
+.catalog-actions a{color:#1d62c6;text-decoration:none;font-size:12px}
+.catalog-actions a:hover{text-decoration:underline}
 .rank-name{font-weight:600;color:#1a3a5c}
 .rank-value{color:#2e7d32;font-weight:700}
-.event-item{border:1px solid #e4edf5;border-radius:12px;padding:12px 14px;background:#fcfdff}
-.event-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px}
+.event-item{border:1px solid #e4edf5;border-radius:10px;padding:8px 10px;background:#fcfdff}
+.event-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:6px}
 .event-flag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700}
 .event-flag.appeared{color:#2e7d32}
 .event-flag.disappeared{color:#c62828}
 .event-time{font-size:12px;color:#7f8fa2;white-space:nowrap}
-.event-main{font-size:13px;color:#304152;line-height:1.6}
+.event-main{font-size:12px;color:#304152;line-height:1.35;display:grid;gap:4px}
 .event-main strong{color:#18344f}
-.event-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:12px}
+.event-line{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.event-detail{font-size:11px;color:#5c6d80}
+.event-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:11px}
 .event-links a{color:#1d62c6;text-decoration:none}
 .event-links a:hover{text-decoration:underline}
+.pagination{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+.pagination-info{font-size:12px;color:#6f8093}
+.pagination-actions{display:flex;gap:8px;align-items:center}
+.page-btn{padding:6px 10px;border:1px solid #d0d9e2;border-radius:8px;background:#f7fafc;color:#516273;font-size:12px;font-weight:600;cursor:pointer}
+.page-btn:disabled{opacity:.45;cursor:not-allowed}
 .no-data{text-align:center;padding:80px 20px;color:#999;font-size:16px}
 .date-section{margin-bottom:24px}
 .date-title{font-size:15px;font-weight:600;margin-bottom:8px;color:#1a3a5c;display:flex;align-items:center;gap:8px}
@@ -114,6 +126,9 @@ body{font-size:14px}
 .chip-container{max-width:none}
 .content{padding:16px}
 .history-grid{padding:0 16px 16px;grid-template-columns:1fr}
+.history-top-grid{padding:0 16px 16px;grid-template-columns:1fr}
+.event-list{grid-template-columns:1fr}
+.catalog-list{grid-template-columns:1fr}
 .date-section{margin-bottom:16px}
 .date-title{font-size:14px;flex-wrap:wrap}
 .date-title .badge{font-size:10px}
@@ -131,6 +146,7 @@ th:first-child{min-width:160px}
 .dashboard{padding:10px 12px 0;grid-template-columns:1fr}
 .content{padding:12px}
 .history-grid{padding:0 12px 12px}
+.history-top-grid{padding:0 12px 12px}
 .summary{padding:10px 12px}
 .btn-pause{padding:4px 8px}
 .chip{padding:4px 8px;font-size:11px}
@@ -179,7 +195,7 @@ th:first-child{min-width:150px}
 </div>
 <div class="tab-section" id="historyTab">
   <div class="dashboard" id="historyDashboard"></div>
-  <div class="history-grid" style="padding-top:16px">
+  <div class="history-top-grid" style="padding-top:16px">
     <div class="history-panel">
       <div class="panel-title">近 7 天放号统计</div>
       <div class="day-stats" id="dayStats"></div>
@@ -188,11 +204,24 @@ th:first-child{min-width:150px}
       <div class="panel-title">近 7 天高频分行</div>
       <div class="rank-list" id="topBranches"></div>
     </div>
+    <div class="history-panel">
+      <div class="panel-title">近 7 天高频预约时间</div>
+      <div class="rank-list" id="topAppointmentTimes"></div>
+    </div>
+    <div class="history-panel">
+      <div class="panel-title">近 7 天高频放号时间段</div>
+      <div class="rank-list" id="topTimes"></div>
+    </div>
+    <div class="history-panel">
+      <div class="panel-title">近 7 天所有放号时间段</div>
+      <div class="rank-list" id="allReleaseWindows"></div>
+    </div>
   </div>
   <div class="history-grid" style="padding-top:0">
     <div class="history-panel" style="grid-column:1/-1">
       <div class="panel-title">最近变化记录</div>
       <div class="event-list" id="recentEvents"></div>
+      <div class="pagination" id="historyPagination"></div>
     </div>
   </div>
 </div>
@@ -224,6 +253,7 @@ let selectedTimes = new Set();
 let branchKeyword = '';
 let catalogKeyword = '';
 let activeTab = 'monitor';
+let historyPage = 1;
 let paused = false;
 let refreshTimer = null;
 
@@ -232,19 +262,21 @@ async function fetchData() {
   try {
     const [statusResp, historyResp] = await Promise.all([
       fetch('/api/status'),
-      fetch('/api/history')
+      fetch('/api/history?page=' + historyPage)
     ]);
     const branchResp = await fetch('/api/branches');
     if (!statusResp.ok) throw new Error('HTTP ' + statusResp.status);
     DATA = await statusResp.json();
     HISTORY = historyResp.ok ? await historyResp.json() : null;
+    historyPage = (HISTORY && HISTORY.recent_events_pagination && HISTORY.recent_events_pagination.page) || 1;
     BRANCH_CATALOG = branchResp.ok ? await branchResp.json() : [];
     updateStatus(true);
     renderFilters();
     renderDashboard();
     renderTable();
     renderHistory();
-    renderBranchCatalog();
+    renderBranchCatalogCards();
+    applyChineseLabels();
     switchTab(activeTab, true);
   } catch (e) {
     updateStatus(false, e.message);
@@ -267,7 +299,7 @@ function switchTab(tab, silent) {
     renderTable();
     renderDashboard();
     renderHistory();
-    renderBranchCatalog();
+    renderBranchCatalogCards();
   }
 
   if (isHistory) {
@@ -275,7 +307,7 @@ function switchTab(tab, silent) {
     document.getElementById('summaryLeft').textContent =
       '今日 +' + (today.appeared_count || 0) + ' / -' + (today.disappeared_count || 0);
   } else if (isBranches) {
-    renderBranchCatalog();
+    renderBranchCatalogCards();
   } else {
     renderTable();
   }
@@ -629,7 +661,11 @@ function renderTable() {
 function renderHistory() {
   renderDayStats();
   renderTopBranches();
-  renderRecentEvents();
+  renderTopAppointmentTimes();
+  renderReleaseWindows();
+  renderAllReleaseWindows();
+  renderRecentEventsCards();
+  renderHistoryPagination(((HISTORY && HISTORY.recent_events) || []).length);
 }
 
 function renderBranchCatalog() {
@@ -718,6 +754,192 @@ function renderRecentEvents() {
   }).join('');
 }
 
+function renderHistoryPagination(totalRendered) {
+  const el = document.getElementById('historyPagination');
+  const paging = (HISTORY && HISTORY.recent_events_pagination) || {
+    page: 1,
+    page_size: 10,
+    total_items: totalRendered || 0,
+    total_pages: 0
+  };
+  const totalItems = Number(paging.total_items || 0);
+  const page = Number(paging.page || 1);
+  const totalPages = Number(paging.total_pages || 0);
+
+  if (totalItems === 0) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const start = (page - 1) * Number(paging.page_size || 10) + 1;
+  const end = Math.min(totalItems, start + Math.max(0, totalRendered - 1));
+  const prevDisabled = page <= 1 ? ' disabled' : '';
+  const nextDisabled = totalPages <= 1 || page >= totalPages ? ' disabled' : '';
+
+  el.innerHTML = '<span class="pagination-info">第 ' + start + '-' + end + ' 条，共 ' + totalItems + ' 条，第 ' + page + '/' + Math.max(totalPages, 1) + ' 页</span>'
+    + '<div class="pagination-actions">'
+    + '<button class="page-btn"' + prevDisabled + ' onclick="changeHistoryPage(' + (page - 1) + ')">上一页</button>'
+    + '<button class="page-btn"' + nextDisabled + ' onclick="changeHistoryPage(' + (page + 1) + ')">下一页</button>'
+    + '</div>';
+}
+
+function changeHistoryPage(page) {
+  const nextPage = Math.max(1, Number(page) || 1);
+  if (nextPage === historyPage) return;
+  historyPage = nextPage;
+  fetchData();
+}
+
+function renderBranchCatalogCards() {
+  const el = document.getElementById('branchCatalog');
+  const keyword = catalogKeyword.toLowerCase();
+  const rows = (BRANCH_CATALOG || []).filter(item => {
+    if (!keyword) return true;
+    return [item.name, item.code, item.address_cn, item.tel_no]
+      .some(v => String(v || '').toLowerCase().includes(keyword));
+  });
+
+  if (activeTab === 'branches') {
+    document.getElementById('summaryLeft').textContent = rows.length + ' 个分行';
+  }
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="placeholder">暂无分行数据</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map(item => {
+    const badgeClass = item.is_enabled ? 'enabled' : 'disabled';
+    const badgeText = item.is_enabled ? '启用' : '禁用';
+    const mapUrls = buildMapUrls(item.name, item.address_cn || '');
+    const links = item.address_cn
+      ? '<div class="catalog-actions"><a href="' + escapeHtml(mapUrls.google) + '" target="_blank" rel="noopener noreferrer">地图</a></div>'
+      : '';
+
+    return '<div class="catalog-item">'
+      + '<div class="catalog-top"><div><div class="catalog-name">' + escapeHtml(item.name) + '</div><div class="catalog-code">' + escapeHtml(item.code) + '</div></div><span class="catalog-badge ' + badgeClass + '">' + badgeText + '</span></div>'
+      + '<div class="catalog-meta">'
+      + (item.address_cn ? ('<div>' + escapeHtml(item.address_cn) + '</div>') : '')
+      + (item.tel_no ? ('<div>' + escapeHtml(item.tel_no) + '</div>') : '')
+      + (item.updated_at ? ('<div>更新: ' + escapeHtml(item.updated_at) + '</div>') : '')
+      + '</div>'
+      + links
+      + '</div>';
+  }).join('');
+}
+
+function renderRecentEventsCards() {
+  const el = document.getElementById('recentEvents');
+  const rows = (HISTORY && HISTORY.recent_events) || [];
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="placeholder">暂无最近变化</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map(item => {
+    const appeared = item.event_type === 'appeared';
+    const flagClass = appeared ? 'appeared' : 'disappeared';
+    const flagText = appeared ? '可预约' : '已不可预约';
+    const details = [];
+    if (item.duration_secs) details.push('<span class="event-detail">存活 ' + escapeHtml(formatDurationShort(item.duration_secs)) + '</span>');
+    if (item.address_cn) details.push('<span class="event-detail">' + escapeHtml(item.address_cn) + '</span>');
+    if (item.tel_no) details.push('<span class="event-detail">' + escapeHtml(item.tel_no) + '</span>');
+    const links = item.google_maps_url
+      ? '<div class="event-links"><a href="' + escapeHtml(item.google_maps_url) + '" target="_blank" rel="noopener noreferrer">地图</a></div>'
+      : '';
+
+    return '<div class="event-item">'
+      + '<div class="event-top"><span class="event-flag ' + flagClass + '">' + flagText + '</span><span class="event-time">' + escapeHtml(item.event_at) + '</span></div>'
+      + '<div class="event-main">'
+      + '<div class="event-line"><strong>' + escapeHtml(item.branch_name) + '</strong><span>' + escapeHtml(item.appointment_date) + ' ' + escapeHtml(item.appointment_time) + '</span></div>'
+      + (details.length ? ('<div class="event-line">' + details.join('') + '</div>') : '')
+      + '</div>'
+      + links
+      + '</div>';
+  }).join('');
+}
+
+function renderReleaseWindows() {
+  const el = document.getElementById('topTimes');
+  const rows = (HISTORY && HISTORY.top_release_windows) || [];
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="placeholder">暂无放号时间段</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map((item, idx) => {
+    const sameRange = (item.range_start || '') === (item.range_end || '');
+    const hasSpread = Number(item.minus_minutes || 0) > 0 || Number(item.plus_minutes || 0) > 0;
+    const rangeLabel = sameRange
+      ? '<span class="catalog-code">固定时点</span>'
+      : '<span class="catalog-code">窗口 ' + escapeHtml(item.range_start) + '-' + escapeHtml(item.range_end) + '</span>';
+    const spreadLabel = hasSpread
+      ? (' | 波动 -' + (item.minus_minutes || 0) + '分/+' + (item.plus_minutes || 0) + '分')
+      : ' | 固定';
+
+    return '<div class="rank-item">'
+      + '<span class="rank-name">' + (idx + 1) + '. ' + escapeHtml(item.center_time) + ' ' + rangeLabel + '</span>'
+      + '<span class="rank-value">' + (item.sample_count || 0) + ' 次探测' + spreadLabel + '</span>'
+      + '</div>';
+  }).join('');
+}
+
+function renderTopAppointmentTimes() {
+  const el = document.getElementById('topAppointmentTimes');
+  const rows = (HISTORY && HISTORY.top_appointment_times) || [];
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="placeholder">暂无预约时间统计</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map((item, idx) =>
+    '<div class="rank-item">'
+    + '<span class="rank-name">' + (idx + 1) + '. ' + escapeHtml(item.appointment_time) + '</span>'
+    + '<span class="rank-value">' + (item.release_count || 0) + ' 次放号</span>'
+    + '</div>'
+  ).join('');
+}
+
+function renderAllReleaseWindows() {
+  const el = document.getElementById('allReleaseWindows');
+  const rows = (HISTORY && HISTORY.all_release_windows) || [];
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="placeholder">暂无放号时间桶</div>';
+    return;
+  }
+
+  el.innerHTML = rows.map((item, idx) => {
+    const sameObserved = (item.observed_start || '') === (item.observed_end || '');
+    const observedLabel = sameObserved
+      ? '<span class="catalog-code">实测 ' + escapeHtml(item.observed_start) + '</span>'
+      : '<span class="catalog-code">实测 ' + escapeHtml(item.observed_start) + '-' + escapeHtml(item.observed_end) + '</span>';
+
+    return '<div class="rank-item">'
+      + '<span class="rank-name">' + (idx + 1) + '. ' + escapeHtml(item.bucket_label) + ' ' + observedLabel + '</span>'
+      + '<span class="rank-value">' + (item.sample_count || 0) + ' 次探测</span>'
+      + '</div>';
+  }).join('');
+}
+
+function applyChineseLabels() {
+  const topTitles = document.querySelectorAll('#historyTab .history-top-grid .panel-title');
+  const topLabels = [
+    '近 7 天放号统计',
+    '近 7 天高频分行',
+    '近 7 天高频预约时间',
+    '近 7 天高频放号时间段',
+    '近 7 天所有放号时间段'
+  ];
+  topTitles.forEach((el, idx) => {
+    if (idx < topLabels.length) el.textContent = topLabels[idx];
+  });
+
+  const historyTitle = document.querySelector('#historyTab .history-grid .panel-title');
+  if (historyTitle) historyTitle.textContent = '最近变化记录';
+
+  const branchTitle = document.querySelector('#branchTab .history-panel .panel-title');
+  if (branchTitle) branchTitle.textContent = '分行目录';
+}
+
 document.getElementById('branchSearch').addEventListener('input', function(e) {
   branchKeyword = e.target.value;
   renderTable();
@@ -725,7 +947,7 @@ document.getElementById('branchSearch').addEventListener('input', function(e) {
 
 document.getElementById('catalogSearch').addEventListener('input', function(e) {
   catalogKeyword = e.target.value;
-  renderBranchCatalog();
+  renderBranchCatalogCards();
 });
 
 fetchData();

@@ -2,6 +2,14 @@ use tracing::{info, error};
 
 use crate::models::{SharedWebData, WebBranchCatalogEntry, WebData, WebHistoryData};
 
+const HISTORY_PAGE_SIZE: usize = 10;
+const HISTORY_RANK_LIMIT: usize = 7;
+
+#[derive(serde::Deserialize, Default)]
+pub struct HistoryQuery {
+    page: Option<usize>,
+}
+
 pub async fn web_index() -> axum::response::Html<&'static str> {
     axum::response::Html(include_str!("web.html"))
 }
@@ -13,8 +21,17 @@ pub async fn web_api_status(
     axum::Json(data.clone())
 }
 
-pub async fn web_api_history() -> axum::Json<WebHistoryData> {
-    match crate::state::load_web_history(7, 24, 8) {
+pub async fn web_api_history(
+    axum::extract::Query(query): axum::extract::Query<HistoryQuery>,
+) -> axum::Json<WebHistoryData> {
+    let page = query.page.unwrap_or(1).max(1);
+    match crate::state::load_web_history(
+        7,
+        page,
+        HISTORY_PAGE_SIZE,
+        HISTORY_RANK_LIMIT,
+        HISTORY_RANK_LIMIT,
+    ) {
         Ok(data) => axum::Json(data),
         Err(e) => {
             error!("读取历史数据失败: {}", e);

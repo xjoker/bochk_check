@@ -200,18 +200,25 @@ pub fn diff_detail_snapshots(
     struct DetailPoint {
         date: String,
         time: String,
+        time_slot_id: String,
         branch: BranchInfo,
     }
 
-    fn flatten(details: &[SlotDetail]) -> BTreeMap<(String, String, String), DetailPoint> {
+    fn flatten(details: &[SlotDetail]) -> BTreeMap<(String, String, String, String), DetailPoint> {
         let mut map = BTreeMap::new();
         for slot in details {
             for branch in &slot.branches {
                 map.insert(
-                    (branch.code.clone(), slot.date.clone(), slot.time.clone()),
+                    (
+                        branch.code.clone(),
+                        slot.date.clone(),
+                        slot.time.clone(),
+                        slot.time_slot_id.clone(),
+                    ),
                     DetailPoint {
                         date: slot.date.clone(),
                         time: slot.time.clone(),
+                        time_slot_id: slot.time_slot_id.clone(),
                         branch: branch.clone(),
                     },
                 );
@@ -226,7 +233,7 @@ pub fn diff_detail_snapshots(
             .map(|point| SlotDetail {
                 date: point.date,
                 time: point.time,
-                time_slot_id: String::new(),
+                time_slot_id: point.time_slot_id,
                 branches: vec![point.branch],
             })
             .collect()
@@ -256,13 +263,14 @@ pub fn count_detail_points(details: &[SlotDetail]) -> usize {
 }
 
 fn format_compact_details(details: &[SlotDetail]) -> String {
-    let mut date_map: BTreeMap<String, BTreeMap<String, BTreeSet<String>>> = BTreeMap::new();
+    let mut date_map: BTreeMap<String, BTreeMap<String, BTreeMap<String, usize>>> =
+        BTreeMap::new();
 
     for slot in details {
         let times = date_map.entry(slot.date.clone()).or_default();
         let branches = times.entry(slot.time.clone()).or_default();
         for branch in &slot.branches {
-            branches.insert(branch.name.clone());
+            *branches.entry(branch.name.clone()).or_insert(0) += 1;
         }
     }
 
@@ -270,11 +278,77 @@ fn format_compact_details(details: &[SlotDetail]) -> String {
     for (date, time_map) in date_map {
         let mut lines = vec![format!("### {}", date)];
         for (time, branches) in time_map {
-            for branch in branches {
-                lines.push(format!("- `{}` {}", time, branch));
+            for (branch, count) in branches {
+                if count > 1 {
+                    lines.push(format!("- `{}` {} x{}", time, branch, count));
+                } else {
+                    lines.push(format!("- `{}` {}", time, branch));
+                }
             }
         }
         sections.push(lines.join("\n"));
+    }
+
+    sections.join("\n\n")
+}
+
+fn format_duration_short(total_secs: u64) -> String {
+    if total_secs < 60 {
+        format!("{}s", total_secs)
+    } else {
+        let minutes = total_secs / 60;
+        if minutes < 60 {
+            format!("{}m", minutes)
+        } else {
+            let hours = minutes / 60;
+            let remain_minutes = minutes % 60;
+            if hours < 24 {
+                if remain_minutes > 0 {
+                    format!("{}h{}m", hours, remain_minutes)
+                } else {
+                    format!("{}h", hours)
+                }
+            } else {
+                let days = hours / 24;
+                let remain_hours = hours % 24;
+                if remain_hours > 0 {
+                    format!("{}d{}h", days, remain_hours)
+                } else {
+                    format!("{}d", days)
+                }
+            }
+        }
+    }
+}
+
+fn format_removed_details(
+    details: &[SlotDetail],
+    removed_durations: &BTreeMap<(String, String, String, String), u64>,
+) -> String {
+    let mut date_map: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+    for slot in details {
+        let lines = date_map.entry(slot.date.clone()).or_default();
+        for branch in &slot.branches {
+            let key = (
+                branch.code.clone(),
+                slot.date.clone(),
+                slot.time.clone(),
+                slot.time_slot_id.clone(),
+            );
+            let duration_text = removed_durations
+                .get(&key)
+                .map(|secs| format!(" (alive {})", format_duration_short(*secs)))
+                .unwrap_or_default();
+            lines.push(format!("- `{}` {}{}", slot.time, branch.name, duration_text));
+        }
+    }
+
+    let mut sections = Vec::new();
+    for (date, lines) in date_map {
+        let mut block = vec![format!("### {}", date)];
+        block.extend(lines);
+        sections.push(block.join("\n"));
     }
 
     sections.join("\n\n")
@@ -318,7 +392,11 @@ fn format_branch_contacts_section(details: &[SlotDetail]) -> String {
 }
 
 /// 将新增/失约的明细差异格式化为 Bark 文本
-pub fn format_detail_change_message(added: &[SlotDetail], removed: &[SlotDetail]) -> String {
+pub fn format_detail_change_message(
+    added: &[SlotDetail],
+    removed: &[SlotDetail],
+    removed_durations: &BTreeMap<(String, String, String, String), u64>,
+) -> String {
     let mut sections = Vec::new();
     if !added.is_empty() {
         sections.push(format!("## 🟢 新增可预约（{}）", added.len()));
@@ -326,13 +404,10 @@ pub fn format_detail_change_message(added: &[SlotDetail], removed: &[SlotDetail]
     }
     if !removed.is_empty() {
         sections.push(format!("## 🔴 已不可预约（{}）", removed.len()));
-        sections.push(format_compact_details(removed));
+        sections.push(format_removed_details(removed, removed_durations));
     }
 
-    let mut merged = Vec::new();
-    merged.extend_from_slice(added);
-    merged.extend_from_slice(removed);
-    let contacts = format_branch_contacts_section(&merged);
+    let contacts = format_branch_contacts_section(added);
     if !contacts.is_empty() {
         sections.push(contacts);
     }

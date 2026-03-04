@@ -19,8 +19,6 @@ pub async fn send_bark_notifications(
             "title": title,
             "markdown": markdown,
             "group": "bochk",
-            "sound": "minuet",
-            "level": "timeSensitive",
         });
         match bark_client.post(&url).json(&payload).send().await {
             Ok(resp) => {

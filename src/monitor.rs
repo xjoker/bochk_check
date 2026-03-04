@@ -15,7 +15,18 @@ use crate::parser::{
 };
 use crate::state::{load_branch_contacts, upsert_branch_catalog};
 
-pub async fn drill_down(proxy_url: &str, available_dates: &[String]) -> Vec<SlotDetail> {
+pub struct DrillDownResult {
+    pub details: Vec<SlotDetail>,
+    pub soft_skipped_slots: usize,
+}
+
+impl DrillDownResult {
+    pub fn is_complete(&self) -> bool {
+        self.soft_skipped_slots == 0
+    }
+}
+
+pub async fn drill_down(proxy_url: &str, available_dates: &[String]) -> DrillDownResult {
     let start = std::time::Instant::now();
     let mut soft_skipped_slots = 0usize;
     let mut slot_map = BTreeMap::<(String, String), SlotDetail>::new();
@@ -61,7 +72,10 @@ pub async fn drill_down(proxy_url: &str, available_dates: &[String]) -> Vec<Slot
         );
     }
 
-    all_details
+    DrillDownResult {
+        details: all_details,
+        soft_skipped_slots,
+    }
 }
 
 async fn drill_down_date(proxy_url: &str, date: &str) -> (String, Vec<SlotDetail>, usize) {

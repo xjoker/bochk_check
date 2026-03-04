@@ -52,7 +52,11 @@ pub struct WebHistoryData {
     pub today: WebHistoryDaySummary,
     pub recent_days: Vec<WebHistoryDaySummary>,
     pub recent_events: Vec<WebHistoryEvent>,
+    pub recent_events_pagination: WebPagination,
     pub top_release_branches: Vec<WebBranchReleaseStat>,
+    pub top_appointment_times: Vec<WebAppointmentTimeStat>,
+    pub top_release_windows: Vec<WebReleaseWindowStat>,
+    pub all_release_windows: Vec<WebReleaseBucketStat>,
 }
 
 #[derive(serde::Serialize, Clone, Default)]
@@ -79,6 +83,38 @@ pub struct WebHistoryEvent {
 pub struct WebBranchReleaseStat {
     pub branch_name: String,
     pub release_count: u32,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebAppointmentTimeStat {
+    pub appointment_time: String,
+    pub release_count: u32,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebReleaseWindowStat {
+    pub center_time: String,
+    pub range_start: String,
+    pub range_end: String,
+    pub minus_minutes: u32,
+    pub plus_minutes: u32,
+    pub sample_count: u32,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebReleaseBucketStat {
+    pub bucket_label: String,
+    pub observed_start: String,
+    pub observed_end: String,
+    pub sample_count: u32,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebPagination {
+    pub page: usize,
+    pub page_size: usize,
+    pub total_items: usize,
+    pub total_pages: usize,
 }
 
 #[derive(serde::Serialize, Clone, Default)]

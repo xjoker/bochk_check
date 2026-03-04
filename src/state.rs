@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Timelike};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
 use crate::models::{
-    BranchInfo, SlotDetail, WebBranchCatalogEntry, WebBranchReleaseStat, WebHistoryData,
-    WebHistoryDaySummary, WebHistoryEvent,
+    BranchInfo, SlotDetail, WebAppointmentTimeStat, WebBranchCatalogEntry, WebBranchReleaseStat,
+    WebHistoryData, WebHistoryDaySummary, WebHistoryEvent, WebPagination, WebReleaseBucketStat,
+    WebReleaseWindowStat,
 };
 
 const DB_SCHEMA_VERSION: i64 = 3;
@@ -451,8 +452,10 @@ pub fn filter_enabled_details(
 
 pub fn load_web_history(
     day_limit: usize,
-    event_limit: usize,
+    event_page: usize,
+    event_page_size: usize,
     top_branch_limit: usize,
+    top_time_limit: usize,
 ) -> Result<WebHistoryData, Box<dyn std::error::Error + Send + Sync>> {
     let conn = open_conn()?;
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
@@ -531,6 +534,34 @@ pub fn load_web_history(
         top_release_branches.push(row?);
     }
 
+    let top_appointment_times =
+        load_top_appointment_times(&conn, &since_date, top_time_limit)?;
+    let release_points = load_release_points(&conn, &since_date)?;
+    let all_release_windows = build_release_buckets(&release_points);
+    let mut top_release_windows = build_release_windows(&release_points);
+    top_release_windows.sort_by(|a, b| {
+        b.sample_count
+            .cmp(&a.sample_count)
+            .then_with(|| a.center_time.cmp(&b.center_time))
+    });
+    top_release_windows.truncate(top_time_limit);
+
+    let total_items = conn.query_row("SELECT COUNT(*) FROM slot_events", [], |row| {
+        row.get::<_, i64>(0)
+    })? as usize;
+    let total_pages = if total_items == 0 {
+        0
+    } else {
+        (total_items + event_page_size.saturating_sub(1)) / event_page_size.max(1)
+    };
+    let page = if total_pages == 0 {
+        1
+    } else {
+        event_page.max(1).min(total_pages)
+    };
+    let page_size = event_page_size.max(1);
+    let offset = page.saturating_sub(1) * page_size;
+
     let mut recent_event_stmt = conn.prepare(
         r#"
         SELECT
@@ -547,10 +578,11 @@ pub fn load_web_history(
         FROM slot_events e
         LEFT JOIN branches b ON b.branch_code = e.branch_code
         ORDER BY e.id DESC
-        LIMIT ?1
+        LIMIT ?1 OFFSET ?2
         "#,
     )?;
-    let recent_event_rows = recent_event_stmt.query_map(params![event_limit as i64], |row| {
+    let recent_event_rows =
+        recent_event_stmt.query_map(params![page_size as i64, offset as i64], |row| {
         Ok((
             row.get::<_, i64>(0)?,
             row.get::<_, String>(1)?,
@@ -622,8 +654,172 @@ pub fn load_web_history(
         today,
         recent_days,
         recent_events,
+        recent_events_pagination: WebPagination {
+            page,
+            page_size,
+            total_items,
+            total_pages,
+        },
         top_release_branches,
+        top_appointment_times,
+        top_release_windows,
+        all_release_windows,
     })
+}
+
+fn load_top_appointment_times(
+    conn: &Connection,
+    since_date: &str,
+    limit: usize,
+) -> Result<Vec<WebAppointmentTimeStat>, Box<dyn std::error::Error + Send + Sync>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT
+            appointment_time,
+            COUNT(*) AS release_count
+        FROM slot_events
+        WHERE event_type='appeared'
+          AND substr(event_at, 1, 10) >= ?1
+        GROUP BY appointment_time
+        ORDER BY release_count DESC, appointment_time ASC
+        LIMIT ?2
+        "#,
+    )?;
+
+    let rows = stmt.query_map(params![since_date, limit as i64], |row| {
+        Ok(WebAppointmentTimeStat {
+            appointment_time: row.get::<_, String>(0)?,
+            release_count: row.get::<_, i64>(1)? as u32,
+        })
+    })?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row?);
+    }
+    Ok(items)
+}
+
+fn load_release_points(
+    conn: &Connection,
+    since_date: &str,
+) -> Result<Vec<u32>, Box<dyn std::error::Error + Send + Sync>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT event_at
+        FROM slot_events
+        WHERE event_type='appeared'
+          AND substr(event_at, 1, 10) >= ?1
+        ORDER BY event_at ASC
+        "#,
+    )?;
+
+    let rows = stmt.query_map(params![since_date], |row| row.get::<_, String>(0))?;
+    let mut points = Vec::new();
+    for row in rows {
+        let event_at = row?;
+        if let Some(seconds) = hhmm_seconds_from_timestamp(&event_at) {
+            points.push(seconds);
+        }
+    }
+
+    Ok(points)
+}
+
+fn build_release_windows(points: &[u32]) -> Vec<WebReleaseWindowStat> {
+    if points.is_empty() {
+        return Vec::new();
+    }
+
+    let mut clusters: Vec<Vec<u32>> = Vec::new();
+    let cluster_gap_secs = 20 * 60;
+    for point in points {
+        if let Some(last_cluster) = clusters.last_mut() {
+            let last_point = *last_cluster.last().unwrap_or(point);
+            if point.saturating_sub(last_point) <= cluster_gap_secs {
+                last_cluster.push(*point);
+                continue;
+            }
+        }
+        clusters.push(vec![*point]);
+    }
+
+    let mut windows: Vec<WebReleaseWindowStat> = clusters
+        .into_iter()
+        .map(|cluster| {
+            let min = *cluster.first().unwrap_or(&0);
+            let max = *cluster.last().unwrap_or(&0);
+            let count = cluster.len() as u32;
+            let sum: u64 = cluster.iter().map(|v| *v as u64).sum();
+            let center = (sum / cluster.len() as u64) as u32;
+
+            WebReleaseWindowStat {
+                center_time: format_hhmm(center),
+                range_start: format_hhmm(min),
+                range_end: format_hhmm(max),
+                minus_minutes: ((center.saturating_sub(min)) + 59) / 60,
+                plus_minutes: ((max.saturating_sub(center)) + 59) / 60,
+                sample_count: count,
+            }
+        })
+        .collect();
+    windows.sort_by(|a, b| a.center_time.cmp(&b.center_time));
+
+    windows
+}
+
+fn build_release_buckets(points: &[u32]) -> Vec<WebReleaseBucketStat> {
+    use std::collections::BTreeMap;
+
+    if points.is_empty() {
+        return Vec::new();
+    }
+
+    let mut buckets: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+    for point in points {
+        let bucket_key = *point / 1800;
+        buckets.entry(bucket_key).or_default().push(*point);
+    }
+
+    buckets
+        .into_iter()
+        .map(|(bucket_key, values)| {
+            let bucket_start = bucket_key * 1800;
+            let bucket_end = ((bucket_key + 1) * 1800).min(24 * 3600);
+            let observed_start = *values.iter().min().unwrap_or(&bucket_start);
+            let observed_end = *values.iter().max().unwrap_or(&bucket_start);
+
+            WebReleaseBucketStat {
+                bucket_label: format!(
+                    "{}-{}",
+                    format_hhmm(bucket_start),
+                    format_hhmm_edge(bucket_end)
+                ),
+                observed_start: format_hhmm(observed_start),
+                observed_end: format_hhmm(observed_end),
+                sample_count: values.len() as u32,
+            }
+        })
+        .collect()
+}
+
+fn hhmm_seconds_from_timestamp(value: &str) -> Option<u32> {
+    let dt = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S").ok()?;
+    Some(dt.time().num_seconds_from_midnight())
+}
+
+fn format_hhmm(total_seconds: u32) -> String {
+    let hours = (total_seconds / 3600) % 24;
+    let minutes = (total_seconds % 3600) / 60;
+    format!("{:02}:{:02}", hours, minutes)
+}
+
+fn format_hhmm_edge(total_seconds: u32) -> String {
+    if total_seconds >= 24 * 3600 {
+        "24:00".to_string()
+    } else {
+        format_hhmm(total_seconds)
+    }
 }
 
 fn duration_seconds_between(start: &str, end: &str) -> Option<u64> {

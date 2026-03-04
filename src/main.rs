@@ -19,7 +19,7 @@ use client::{
     build_client, fetch_date_quota, initialize_session,
 };
 use models::{build_web_data, ChangeEntry, SharedWebData, SlotDetail, WebData};
-use monitor::drill_down;
+use monitor::{drill_down, DrillDownResult};
 use notifier::send_bark_notifications;
 use parser::{
     append_change_log, count_detail_points, details_cover_dates, diff_detail_snapshots, diff_json,
@@ -123,15 +123,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
                 let has_available = !available.is_empty();
 
-                let details = if has_available {
+                let drill_result = if has_available {
                     info!(
                         "[{}] 发现 {} 个可预约日期，开始深度查询... (fetch: {}ms)",
                         now,
                         available.len(),
                         fetch_elapsed
                     );
-                    let d = drill_down(&config.proxy.url, &available).await;
-                    Some(d)
+                    Some(drill_down(&config.proxy.url, &available).await)
                 } else {
                     None
                 };
@@ -155,7 +154,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     None
                 };
 
-                let raw_current_details = details.clone().unwrap_or_default();
+                let raw_current_details = drill_result
+                    .as_ref()
+                    .map(|result| result.details.clone())
+                    .unwrap_or_default();
                 let current_details = match filter_enabled_details(&raw_current_details) {
                     Ok(filtered) => filtered,
                     Err(e) => {
@@ -163,9 +165,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         raw_current_details.clone()
                     }
                 };
-                let details_complete = details_cover_dates(&available, &raw_current_details);
+                let details_complete = if has_available {
+                    let covers_dates = details_cover_dates(&available, &raw_current_details);
+                    let probe_complete = drill_result
+                        .as_ref()
+                        .map(DrillDownResult::is_complete)
+                        .unwrap_or(false);
+                    covers_dates && probe_complete
+                } else {
+                    true
+                };
+
+                let mut bark_title: Option<String> = None;
+                let mut bark_sections: Vec<String> = Vec::new();
 
                 if has_available && !details_complete {
+                    let skipped_slots = drill_result
+                        .as_ref()
+                        .map(|result| result.soft_skipped_slots)
+                        .unwrap_or(0);
                     info!(
                         "本轮深度查询未覆盖全部可预约日期，跳过 Bark 通知: {}",
                         available
@@ -174,10 +192,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             .collect::<Vec<_>>()
                             .join(", ")
                     );
+                    info!("skip Bark due to incomplete probe, skipped_slots={}", skipped_slots);
                 } else {
                     let (added, removed) =
                         diff_detail_snapshots(&last_notified_details, &current_details);
-                    let body = format_detail_change_message(&added, &removed);
+                    let removed_durations = if removed.is_empty() {
+                        std::collections::BTreeMap::new()
+                    } else {
+                        let first_seen_map = match load_current_slot_first_seen_map() {
+                            Ok(map) => map,
+                            Err(e) => {
+                                error!("璇诲彇杩囨湡鐐逛綅棣栨鎹曡幏鏃堕棿澶辫触: {}", e);
+                                std::collections::BTreeMap::new()
+                            }
+                        };
+                        build_removed_duration_map(&removed, &first_seen_map, &now)
+                    };
+                    let body = format_detail_change_message(&added, &removed, &removed_durations);
 
                     if !body.is_empty() {
                         if !added.is_empty() {
@@ -188,13 +219,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             }
                         }
                         let current_total = count_detail_points(&current_details);
-                        let title = format!(
+                        bark_title = Some(format!(
                             "BOCHK 当前可约 {} 个（+{} / -{}）",
                             current_total,
                             added.len(),
                             removed.len()
-                        );
+                        ));
                         info!("推送明细变化通知:\n{}", body);
+                        bark_sections.push(body);
+                    } else {
+                        info!("[{}] 分行时段明细无变化", now);
+                    }
+                }
+
+                if let Some(title) = bark_title {
+                    let body = bark_sections.join("\n\n---\n\n");
+                    if !body.is_empty() {
                         send_bark_notifications(
                             &bark_client,
                             &config.bark.urls,
@@ -202,8 +242,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             &body,
                         )
                         .await;
-                    } else {
-                        info!("[{}] 分行时段明细无变化", now);
                     }
                 }
 
@@ -258,7 +296,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         raw_response: current.clone(),
                         diff,
                         available_dates: available.clone(),
-                        details,
+                        details: drill_result.map(|result| result.details),
                     };
                     if let Err(e) = append_change_log(&entry) {
                         error!("写入变化日志失败: {}", e);
@@ -310,4 +348,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         tokio::time::sleep(interval).await;
     }
+}
+
+fn build_removed_duration_map(
+    removed: &[SlotDetail],
+    first_seen_map: &std::collections::BTreeMap<(String, String, String), String>,
+    expired_at: &str,
+) -> std::collections::BTreeMap<(String, String, String, String), u64> {
+    let mut durations = std::collections::BTreeMap::new();
+
+    for slot in removed {
+        for branch in &slot.branches {
+            if let Some(first_seen_at) =
+                first_seen_map.get(&(branch.code.clone(), slot.date.clone(), slot.time.clone()))
+            {
+                if let Some(duration_secs) = duration_seconds_between(first_seen_at, expired_at) {
+                    durations.insert(
+                        (
+                            branch.code.clone(),
+                            slot.date.clone(),
+                            slot.time.clone(),
+                            slot.time_slot_id.clone(),
+                        ),
+                        duration_secs,
+                    );
+                }
+            }
+        }
+    }
+
+    durations
+}
+
+fn duration_seconds_between(start: &str, end: &str) -> Option<u64> {
+    let start_dt = chrono::NaiveDateTime::parse_from_str(start, "%Y-%m-%d %H:%M:%S").ok()?;
+    let end_dt = chrono::NaiveDateTime::parse_from_str(end, "%Y-%m-%d %H:%M:%S").ok()?;
+    let seconds = (end_dt - start_dt).num_seconds();
+    if seconds < 0 {
+        return Some(0);
+    }
+    Some(seconds as u64)
 }
