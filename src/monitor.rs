@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures_util::future::join_all;
 use futures_util::stream::{FuturesUnordered, StreamExt};
@@ -26,6 +27,7 @@ pub async fn drill_down(
     let branch_meta_cache = Arc::new(Mutex::new(
         BTreeMap::<String, (String, String)>::new(),
     ));
+    let soft_skipped_slots = Arc::new(AtomicUsize::new(0));
 
     let mut time_stream: FuturesUnordered<_> = available_dates
         .iter()
@@ -59,6 +61,7 @@ pub async fn drill_down(
                     let date_raw = date.clone();
                     let slot_map = slot_map.clone();
                     let branch_meta_cache = branch_meta_cache.clone();
+                    let soft_skipped_slots = soft_skipped_slots.clone();
 
                     layer2_futs.push(tokio::spawn(async move {
                         let districts = match fetch_branches(&client, &api_date, &slot_id, "", "D").await {
@@ -67,7 +70,17 @@ pub async fn drill_down(
                                 d
                             }
                             Err(e) => {
-                                warn!("查询 {}/{} 区域失败: {}", date_raw, slot_id, e);
+                                let err_text = e.to_string();
+                                if err_text.contains("业务错误 WHKEQR888") {
+                                    soft_skipped_slots.fetch_add(1, Ordering::Relaxed);
+                                    info!(
+                                        "时段 {}/{} 未返回区域明细（WHKEQR888），已跳过",
+                                        format_date(&date_raw),
+                                        slot_id
+                                    );
+                                } else {
+                                    warn!("查询 {}/{} 区域失败: {}", date_raw, slot_id, err_text);
+                                }
                                 return;
                             }
                         };
@@ -194,11 +207,21 @@ pub async fn drill_down(
         .collect();
 
     let elapsed = start.elapsed().as_millis();
-    info!(
-        "深度查询完成: {} 个可预约时段, 耗时 {}ms",
-        all_details.len(),
-        elapsed
-    );
+    let skipped = soft_skipped_slots.load(Ordering::Relaxed);
+    if skipped > 0 {
+        info!(
+            "深度查询完成: {} 个可预约时段, {} 个时段未返回区域明细, 耗时 {}ms",
+            all_details.len(),
+            skipped,
+            elapsed
+        );
+    } else {
+        info!(
+            "深度查询完成: {} 个可预约时段, 耗时 {}ms",
+            all_details.len(),
+            elapsed
+        );
+    }
 
     all_details
 }
