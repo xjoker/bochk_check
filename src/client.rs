@@ -281,3 +281,115 @@ pub async fn fetch_branches(
     append_api_log("jsonAvailableBrsByDT", &body, &resp);
     Ok(resp)
 }
+
+pub async fn fetch_branch_detail(
+    client: &reqwest::Client,
+    branch_code: &str,
+) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
+    let req_id = next_request_id();
+    let query = format!("bean.branchCode={}", branch_code);
+    let url = format!("{}jsonBranchDetail.action?{}", BASE_URL, query);
+    let max_retries: u32 = 3;
+    let mut last_err: Box<dyn std::error::Error + Send + Sync> = "unknown".into();
+
+    info!(
+        target: "bochk_check::request_log",
+        "REQ#{req_id} START GET jsonBranchDetail.action | query: {}",
+        query
+    );
+
+    for attempt in 1..=max_retries {
+        let start = std::time::Instant::now();
+        let result = client
+            .get(&url)
+            .header("Referer", REFERER)
+            .header("Origin", ORIGIN)
+            .header("Accept-Language", ACCEPT_LANGUAGE)
+            .send()
+            .await;
+
+        match result {
+            Ok(resp) => {
+                let status = resp.status();
+                let elapsed = start.elapsed().as_millis();
+
+                if !status.is_success() {
+                    last_err = format!("HTTP {}: jsonBranchDetail.action", status).into();
+                    warn!(
+                        target: "bochk_check::request_log",
+                        "REQ#{req_id} HTTP_ERR jsonBranchDetail.action | status={} | attempt={}/{} | {}ms",
+                        status,
+                        attempt,
+                        max_retries,
+                        elapsed
+                    );
+                    if attempt < max_retries {
+                        tokio::time::sleep(Duration::from_millis(300)).await;
+                    }
+                    continue;
+                }
+
+                match resp.json::<serde_json::Value>().await {
+                    Ok(json) => {
+                        if let Err(e) = ensure_business_success("jsonBranchDetail.action", &query, &json) {
+                            warn!(
+                                target: "bochk_check::request_log",
+                                "REQ#{req_id} BIZ_ERR jsonBranchDetail.action | attempt={}/{} | {}ms | {}",
+                                attempt,
+                                max_retries,
+                                elapsed,
+                                e
+                            );
+                            return Err(e);
+                        }
+                        info!(
+                            target: "bochk_check::request_log",
+                            "REQ#{req_id} OK jsonBranchDetail.action | attempt={}/{} | {}ms",
+                            attempt,
+                            max_retries,
+                            elapsed
+                        );
+                        append_api_log("jsonBranchDetail", &query, &json);
+                        return Ok(json);
+                    }
+                    Err(e) => {
+                        last_err = e.into();
+                        warn!(
+                            target: "bochk_check::request_log",
+                            "REQ#{req_id} JSON_ERR jsonBranchDetail.action | attempt={}/{} | {}ms",
+                            attempt,
+                            max_retries,
+                            elapsed
+                        );
+                        if attempt < max_retries {
+                            tokio::time::sleep(Duration::from_millis(300)).await;
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                let elapsed = start.elapsed().as_millis();
+                last_err = e.into();
+                warn!(
+                    target: "bochk_check::request_log",
+                    "REQ#{req_id} REQ_ERR jsonBranchDetail.action | attempt={}/{} | {}ms | {}",
+                    attempt,
+                    max_retries,
+                    elapsed,
+                    last_err
+                );
+                if attempt < max_retries {
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                }
+            }
+        }
+    }
+
+    error!(
+        target: "bochk_check::request_log",
+        "REQ#{req_id} GIVE_UP jsonBranchDetail.action | retries={} | {}",
+        max_retries,
+        last_err
+    );
+    Err(last_err)
+}

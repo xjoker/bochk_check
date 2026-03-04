@@ -24,6 +24,8 @@ pub struct BranchInfo {
     pub name: String,
     pub code: String,
     pub status: String,
+    pub address_cn: String,
+    pub tel_no: String,
 }
 
 #[derive(serde::Serialize)]
@@ -48,6 +50,8 @@ pub struct WebData {
 pub struct WebBranch {
     pub name: String,
     pub code: String,
+    pub address_cn: String,
+    pub tel_no: String,
     pub availability: BTreeMap<String, BTreeMap<String, String>>,
 }
 
@@ -61,25 +65,35 @@ pub fn build_web_data(
     use std::collections::BTreeSet;
 
     let mut all_times: BTreeSet<String> = BTreeSet::new();
-    let mut branch_map: BTreeMap<(String, String), BTreeMap<String, BTreeMap<String, String>>> =
-        BTreeMap::new();
+    let mut branch_map: BTreeMap<
+        (String, String),
+        (String, String, BTreeMap<String, BTreeMap<String, String>>),
+    > = BTreeMap::new();
 
     for slot in details {
         all_times.insert(slot.time.clone());
         for b in &slot.branches {
             let entry = branch_map
                 .entry((b.code.clone(), b.name.clone()))
-                .or_default();
-            let date_map = entry.entry(slot.date.clone()).or_default();
+                .or_insert_with(|| (b.address_cn.clone(), b.tel_no.clone(), BTreeMap::new()));
+            if entry.0.is_empty() && !b.address_cn.is_empty() {
+                entry.0 = b.address_cn.clone();
+            }
+            if entry.1.is_empty() && !b.tel_no.is_empty() {
+                entry.1 = b.tel_no.clone();
+            }
+            let date_map = entry.2.entry(slot.date.clone()).or_default();
             date_map.insert(slot.time.clone(), b.status.clone());
         }
     }
 
     let branches: Vec<WebBranch> = branch_map
         .into_iter()
-        .map(|((code, name), availability)| WebBranch {
+        .map(|((code, name), (address_cn, tel_no, availability))| WebBranch {
             name,
             code,
+            address_cn,
+            tel_no,
             availability,
         })
         .collect();

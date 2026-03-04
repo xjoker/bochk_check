@@ -45,10 +45,10 @@ th:first-child{text-align:left;min-width:180px}
 td{padding:6px 12px;text-align:center;border-bottom:1px solid #f0f0f0;white-space:nowrap}
 td:first-child{text-align:left;font-weight:500}
 tr:hover td{background:#f8fafc}
-.branch-cell{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.branch-name{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.map-link{font-size:12px;color:#1a73e8;text-decoration:none;flex-shrink:0}
-.map-link:hover{text-decoration:underline}
+.branch-cell{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.branch-name{min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:#1a3a5c}
+.branch-meta{font-size:11px;color:#666;line-height:1.45;white-space:normal}
+.branch-meta div{margin:0}
 .cell-a{background:#e8f5e9;color:#2e7d32;font-weight:600}
 .cell-f{color:#bbb;font-size:11px}
 .cell-empty{color:#e0e0e0}
@@ -68,7 +68,7 @@ body{font-size:14px}
 .date-title .badge{font-size:10px}
 th,td{padding:8px 10px}
 th:first-child{min-width:160px}
-.branch-cell{gap:8px}
+.branch-cell{gap:6px}
 .summary{padding:12px 16px;flex-direction:column;align-items:flex-start}
 }
 @media (max-width: 480px){
@@ -80,9 +80,8 @@ th:first-child{min-width:160px}
 .chip{padding:4px 8px;font-size:11px}
 table{min-width:500px;font-size:12px}
 th:first-child{min-width:150px}
-.branch-cell{flex-direction:column;align-items:flex-start}
 .branch-name{max-width:100%}
-.map-link{font-size:11px}
+.branch-meta{font-size:10px}
 }
 </style>
 </head>
@@ -306,7 +305,13 @@ function renderTable() {
   // 过滤分行
   const keyword = branchKeyword.toLowerCase();
   const branches = !hasBranches ? [] : (DATA.branches || []).filter(b => {
-    if (keyword && !b.name.toLowerCase().includes(keyword) && !b.code.toLowerCase().includes(keyword)) return false;
+    const address = (b.address_cn || '').toLowerCase();
+    const tel = (b.tel_no || '').toLowerCase();
+    if (keyword
+      && !b.name.toLowerCase().includes(keyword)
+      && !b.code.toLowerCase().includes(keyword)
+      && !address.includes(keyword)
+      && !tel.includes(keyword)) return false;
     if (dates.length === 0 && times.length === 0) return true;
     const avail = b.availability || {};
     for (const d of dates) {
@@ -352,12 +357,10 @@ function renderTable() {
         const hasAny = times.some(t => da[t]);
         if (!hasAny) return;
 
-        const mapUrl = 'https://uri.amap.com/search?query='
-          + encodeURIComponent('中银香港 ' + b.name)
-          + '&city=' + encodeURIComponent('香港')
-          + '&src=BOCHK';
+        const addressText = b.address_cn || '暂无地址';
+        const telText = b.tel_no || '暂无电话';
 
-        html += '<tr><td><div class="branch-cell"><span class="branch-name">' + b.name + '</span><a class="map-link" href="' + mapUrl + '" target="_blank" rel="noopener noreferrer">查看地址</a></div></td>';
+        html += '<tr><td><div class="branch-cell"><span class="branch-name">' + b.name + '</span><div class="branch-meta"><div>地址：' + addressText + '</div><div>电话：' + telText + '</div></div></div></td>';
         times.forEach(t => {
           const status = da[t];
           if (!status) {

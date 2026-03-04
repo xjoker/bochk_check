@@ -1,4 +1,5 @@
 use chrono::Local;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::config::base_dir;
 use crate::models::{BranchInfo, ChangeEntry, FieldDiff, SlotDetail};
@@ -102,12 +103,29 @@ pub fn parse_branches(response: &serde_json::Value) -> Vec<BranchInfo> {
                         name: name.to_string(),
                         code: code.to_string(),
                         status: status.to_string(),
+                        address_cn: String::new(),
+                        tel_no: String::new(),
                     });
                 }
             }
         }
     }
     branches
+}
+
+/// 从 jsonBranchDetail 响应中提取分行中文地址与电话
+pub fn parse_branch_detail(response: &serde_json::Value) -> (String, String) {
+    let address_cn = response
+        .get("addressCn")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let tel_no = response
+        .get("telNo")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    (address_cn, tel_no)
 }
 
 /// 递归比较两个 JSON Value，返回所有差异字段
@@ -163,22 +181,61 @@ pub fn diff_json(
 
 /// 将 SlotDetail 列表格式化为可读的通知消息文本
 pub fn format_details_message(details: &[SlotDetail]) -> String {
-    let mut lines = Vec::new();
-    let mut current_date = String::new();
+    let mut grouped: BTreeMap<(String, String), (String, String, BTreeMap<String, BTreeSet<String>>)> =
+        BTreeMap::new();
+
     for slot in details {
-        if slot.date != current_date {
-            if !current_date.is_empty() {
-                lines.push(String::new());
+        for branch in &slot.branches {
+            let entry = grouped
+                .entry((branch.name.clone(), branch.code.clone()))
+                .or_insert_with(|| {
+                    (
+                        branch.address_cn.clone(),
+                        branch.tel_no.clone(),
+                        BTreeMap::new(),
+                    )
+                });
+            if entry.0.is_empty() && !branch.address_cn.is_empty() {
+                entry.0 = branch.address_cn.clone();
             }
-            lines.push(format!("\u{1f4c5} {}", slot.date));
-            current_date = slot.date.clone();
+            if entry.1.is_empty() && !branch.tel_no.is_empty() {
+                entry.1 = branch.tel_no.clone();
+            }
+            entry
+                .2
+                .entry(slot.date.clone())
+                .or_default()
+                .insert(slot.time.clone());
         }
-        let branch_names: Vec<&str> = slot.branches.iter().map(|b| b.name.as_str()).collect();
+    }
+
+    let mut lines = Vec::new();
+    for ((name, _code), (address_cn, tel_no, date_map)) in grouped {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push(format!("\u{1f3e6} {}", name));
         lines.push(format!(
-            "  \u{23f0} {} \u{2192} {}",
-            slot.time,
-            branch_names.join(", ")
+            "地址：{}",
+            if address_cn.is_empty() { "(暂无)" } else { &address_cn }
         ));
+        lines.push(format!(
+            "电话：{}",
+            if tel_no.is_empty() { "(暂无)" } else { &tel_no }
+        ));
+        lines.push(String::new());
+
+        for (date, times) in date_map {
+            lines.push(format!("  \u{1f4c5} {}", date));
+            for time in times {
+                lines.push(format!("  \u{23f0} {}", time));
+            }
+            lines.push(String::new());
+        }
+    }
+
+    while matches!(lines.last(), Some(last) if last.is_empty()) {
+        lines.pop();
     }
     lines.join("\n")
 }

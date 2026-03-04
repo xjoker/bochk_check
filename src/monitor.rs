@@ -6,9 +6,12 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
-use crate::client::{fetch_branches, fetch_time_slots};
+use crate::client::{fetch_branch_detail, fetch_branches, fetch_time_slots};
 use crate::models::SlotDetail;
-use crate::parser::{format_date, parse_available_districts, parse_branches, parse_time_slots, to_api_date};
+use crate::parser::{
+    format_date, parse_available_districts, parse_branch_detail, parse_branches, parse_time_slots,
+    to_api_date,
+};
 
 pub async fn drill_down(
     client: &reqwest::Client,
@@ -18,6 +21,9 @@ pub async fn drill_down(
 
     let slot_map = Arc::new(Mutex::new(
         BTreeMap::<(String, String), SlotDetail>::new(),
+    ));
+    let branch_meta_cache = Arc::new(Mutex::new(
+        BTreeMap::<String, (String, String)>::new(),
     ));
 
     let mut time_stream: FuturesUnordered<_> = available_dates
@@ -51,6 +57,7 @@ pub async fn drill_down(
                     let api_date = to_api_date(&date);
                     let date_raw = date.clone();
                     let slot_map = slot_map.clone();
+                    let branch_meta_cache = branch_meta_cache.clone();
 
                     layer2_futs.push(tokio::spawn(async move {
                         let districts = match fetch_branches(&client, &api_date, &slot_id, "", "D").await {
@@ -87,6 +94,62 @@ pub async fn drill_down(
                         for result in branch_results {
                             if let Ok(resp) = result {
                                 branches.extend(parse_branches(&resp));
+                            }
+                        }
+
+                        if !branches.is_empty() {
+                            let mut known_meta = BTreeMap::new();
+                            let mut missing_codes = Vec::new();
+                            {
+                                let cache = branch_meta_cache.lock().await;
+                                for branch in &branches {
+                                    if let Some(meta) = cache.get(&branch.code) {
+                                        known_meta.insert(branch.code.clone(), meta.clone());
+                                    } else if !missing_codes.contains(&branch.code) {
+                                        missing_codes.push(branch.code.clone());
+                                    }
+                                }
+                            }
+
+                            let detail_results = join_all(
+                                missing_codes
+                                    .iter()
+                                    .map(|code| {
+                                        let client = client.clone();
+                                        let code = code.clone();
+                                        async move { (code.clone(), fetch_branch_detail(&client, &code).await) }
+                                    })
+                                    .collect::<Vec<_>>(),
+                            )
+                            .await;
+
+                            let mut fetched_meta = BTreeMap::new();
+                            for (code, result) in detail_results {
+                                match result {
+                                    Ok(resp) => {
+                                        fetched_meta.insert(code, parse_branch_detail(&resp));
+                                    }
+                                    Err(e) => {
+                                        warn!("查询分行详情 {} 失败: {}", code, e);
+                                    }
+                                }
+                            }
+
+                            if !fetched_meta.is_empty() {
+                                let mut cache = branch_meta_cache.lock().await;
+                                for (code, meta) in &fetched_meta {
+                                    cache.insert(code.clone(), meta.clone());
+                                }
+                            }
+
+                            for branch in &mut branches {
+                                if let Some((address_cn, tel_no)) = known_meta
+                                    .get(&branch.code)
+                                    .or_else(|| fetched_meta.get(&branch.code))
+                                {
+                                    branch.address_cn = address_cn.clone();
+                                    branch.tel_no = tel_no.clone();
+                                }
                             }
                         }
 

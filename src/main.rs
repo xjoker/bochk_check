@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut last_details: Vec<SlotDetail> = Vec::new();
     let mut fail_count: u32 = 0;
     let mut fail_notified = false;
-    let mut last_heartbeat = std::time::Instant::now();
+    let started_at = std::time::Instant::now();
     let mut total_checks: u64 = 0;
 
     loop {
@@ -236,7 +236,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     && (!fail_notified || fail_count % 10 == 0);
 
                 if should_notify {
-                    let uptime_mins = last_heartbeat.elapsed().as_secs() / 60;
+                    let uptime_mins = started_at.elapsed().as_secs() / 60;
                     let body = format!(
                         "⚠️ 监控连续失败 {} 次\n\
                          最后错误: {}\n\
@@ -261,18 +261,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     fail_notified = true;
                 }
             }
-        }
-
-        // 每小时心跳
-        if last_heartbeat.elapsed() >= Duration::from_secs(3600) {
-            let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            let body = format!(
-                "监控运行中\n已检查 {} 次\n当前时间: {}",
-                total_checks, now
-            );
-            send_bark_notifications(&bark_client, &config.bark.urls, "BOCHK 心跳", &body)
-                .await;
-            last_heartbeat = std::time::Instant::now();
         }
 
         tokio::time::sleep(interval).await;
