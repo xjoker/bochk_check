@@ -37,6 +37,7 @@ pub fn format_date(date: &str) -> String {
 }
 
 /// 从 dateTimeQuota 响应中解析可用时段，返回 (slot_id, 时间文本, 状态)
+/// 抓包内前端脚本只把 `A` 渲染为可选项；`F` 显示为已满，`D` 直接跳过。
 pub fn parse_time_slots(response: &serde_json::Value) -> Vec<(String, String, String)> {
     let mut slots = Vec::new();
     if let Some(dtq) = response.get("dateTimeQuota").and_then(|v| v.as_object()) {
@@ -57,6 +58,7 @@ pub fn parse_time_slots(response: &serde_json::Value) -> Vec<(String, String, St
 }
 
 /// 从 branchDistrictList 响应中解析有号区域，返回 (区域编码, 中文名)
+/// 区域 `value` 末尾状态同样仅 `A` 可继续下钻。
 pub fn parse_available_districts(response: &serde_json::Value) -> Vec<(String, String)> {
     let mut districts = Vec::new();
     if let Some(list) = response.get("branchDistrictList").and_then(|v| v.as_array()) {
@@ -266,6 +268,9 @@ pub fn append_change_log(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use std::fs::OpenOptions;
     use std::io::Write;
+    if !crate::config::persist_jsonl_enabled() {
+        return Ok(());
+    }
     let today = Local::now().format("%Y%m%d").to_string();
     let log_path = base_dir().join(format!("changes_{}.jsonl", today));
     let mut file = OpenOptions::new()

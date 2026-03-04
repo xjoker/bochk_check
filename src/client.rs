@@ -233,6 +233,10 @@ pub fn append_api_log(action: &str, body: &str, response: &serde_json::Value) {
     use std::fs::OpenOptions;
     use std::io::Write;
 
+    if !crate::config::persist_jsonl_enabled() {
+        return;
+    }
+
     let today = Local::now().format("%Y%m%d").to_string();
     let log_path = crate::config::base_dir().join(format!("api_log_{}.jsonl", today));
 

@@ -20,10 +20,10 @@
 - 发现可预约日期后，自动深度查询时段、区域、分行
 - 支持 Bark 多端点推送，可同时通知多人
 - 内置 Web 状态页与 JSON API，便于本地观察
-- 失败自动重试，连续失败触发异常告警
-- 每轮自动热重载 `config.toml`，无需重启即可调整参数
+- 失败自动重试，连续失败达到阈值后触发异常告警
+- 多数运行参数每轮自动重载；Web 监听项仍需重启生效
 - 支持 SOCKS5 / `socks5h://` 代理
-- 将原始 API 响应与变化结果写入 JSONL，便于后续分析
+- 可选将原始 API 响应与变化结果写入 JSONL（默认关闭）
 
 ## 工作流程
 
@@ -108,6 +108,10 @@ max_fail_count = 5
 # 可配置多个 Bark 地址
 urls = ["https://api.day.app/your_token_here"]
 
+[logging]
+# 是否额外写入 JSONL 调试日志（默认关闭）
+persist_jsonl = false
+
 [web]
 # 是否开启内置 Web 服务
 enabled = true
@@ -121,8 +125,9 @@ port = 32141
 | --- | --- | --- |
 | `proxy.url` | `string` | SOCKS5 代理地址，支持 `socks5h://` |
 | `monitor.interval_secs` | `u64` | 每轮检测后休眠时长 |
-| `monitor.max_fail_count` | `u32` | 预留配置项，当前代码默认值为 5，但异常告警逻辑实际在连续 3 次失败后触发 |
+| `monitor.max_fail_count` | `u32` | 连续失败告警阈值；最小按 `1` 处理 |
 | `bark.urls` | `string[]` | Bark 推送地址，可为空 |
+| `logging.persist_jsonl` | `bool` | 是否额外落盘 `api_log_*.jsonl` 与 `changes_*.jsonl`，默认关闭 |
 | `web.enabled` | `bool` | 是否启动内置 Web 服务 |
 | `web.port` | `u16` | Web 服务监听端口，默认 `32141` |
 
@@ -136,12 +141,14 @@ port = 32141
 | `BOCHK_MONITOR_INTERVAL_SECS` | `monitor.interval_secs` | `30` |
 | `BOCHK_MONITOR_MAX_FAIL_COUNT` | `monitor.max_fail_count` | `5` |
 | `BOCHK_BARK_URLS` | `bark.urls` | 空数组（关闭推送） |
+| `BOCHK_LOGGING_PERSIST_JSONL` | `logging.persist_jsonl` | `false` |
 | `BOCHK_WEB_ENABLED` | `web.enabled` | `true` |
 | `BOCHK_WEB_PORT` | `web.port` | `32141` |
 
 说明：
 
 - `BOCHK_BARK_URLS` 使用英文逗号分隔多个地址
+- `BOCHK_LOGGING_PERSIST_JSONL` 支持 `true/false`、`1/0`、`yes/no`、`on/off`
 - `BOCHK_WEB_ENABLED` 支持 `true/false`、`1/0`、`yes/no`、`on/off`
 
 ## 运行时行为
@@ -155,7 +162,9 @@ port = 32141
 
 ### 输出文件
 
-程序会在 `config.toml` 所在基准目录写入以下文件：
+默认情况下，程序不会额外写入文件日志，仅输出到 `stderr`。
+
+当 `logging.persist_jsonl=true` 时，程序会在基准目录额外写入以下调试文件：
 
 - `api_log_YYYYMMDD.jsonl`：每次接口请求的原始响应
 - `changes_YYYYMMDD.jsonl`：首轮结果与后续变化记录
@@ -170,7 +179,7 @@ port = 32141
 - 首次启动若已检测到可预约日期，会立即推送一次
 - `dateQuota` 发生变化时，会格式化出“出现可预约 / 已约满”等消息
 - 若有新可预约日期，并且深度查询到分行，会在同一条通知中附带分行详情
-- 连续失败 3 次后会发送异常告警，之后每增加 10 次失败会重复告警
+- 连续失败达到 `monitor.max_fail_count` 后会发送异常告警，之后每额外增加 10 次失败会重复告警
 
 ## BOCHK 接口说明
 
@@ -202,10 +211,10 @@ port = 32141
 | 状态码 | 含义 | 常见位置 |
 | --- | --- | --- |
 | `A` | 可预约 | `dateQuota`、`dateTimeQuota`、区域/分行 `value` 后缀 |
-| `F` | 已满 | 同上 |
-| `D` | 不可选 / 禁用 | 同上 |
+| `F` | 已满 | 同上；前端会显示为“已满”禁用项 |
+| `D` | 不可选 / 禁用 | 同上；前端脚本不会把它渲染为可选项 |
 | `SUCCESS` | 业务成功 | `eaiCode` |
-| `WHKEQR888` | 业务错误 / 前置条件不满足 | `eaiCode` |
+| `WHKEQR888` | 业务错误 / 操作逾时 | `eaiCode`；前端文案为“操作逾时，请重新提交” |
 
 ### 1. `continueInput.action`
 
@@ -231,6 +240,7 @@ GET /whk/form/openAccount/continueInput.action HTTP/1.1
 
 - 每轮探测开始时调用一次
 - 若希望每轮完全隔离上下文，使用“新客户端 + 新会话”模式
+- 当前程序即采用“每个 interval 新建客户端并初始化新会话”的方式运行
 
 ### 2. `jsonAvailableDateAndTime.action`
 
@@ -315,7 +325,7 @@ bean.appDate=12/03/2026
 | --- | --- | --- |
 | `dateTimeQuota` | `object` | 键格式为 `{slot_id}_{status}`，值为展示时间 |
 | `dateQuota` | `null` | 查询时段时通常为空 |
-| `eaiCode` | `string` | `SUCCESS` 表示成功；`WHKEQR888` 表示业务失败 |
+| `eaiCode` | `string` | `SUCCESS` 表示成功；`WHKEQR888` 常见于操作逾时或流程上下文失效 |
 
 适合场景：
 
@@ -566,6 +576,8 @@ bean.precondition=B&bean.district=_sai_kung_district
 
 用途：补充分行展示信息，不直接参与“是否有号”的判断。
 
+抓包中的前端页面会在用户切换分行后调用该接口，并将返回的 `addressCn` / `telNo` 填入地址展示区域。
+
 请求方式：
 
 ```http
@@ -785,5 +797,4 @@ cargo build --release --target x86_64-pc-windows-gnu
 ## 当前限制
 
 - 仓库当前未提供 `Dockerfile`
-- `monitor.max_fail_count` 已写入配置结构，但主循环中的异常告警阈值暂未接入该配置
-- JSONL 日志目前直接写入基准目录，而不是单独的 `data/file/` 子目录
+- 若启用 `logging.persist_jsonl`，JSONL 日志目前直接写入基准目录，而不是单独的 `data/file/` 子目录

@@ -22,6 +22,7 @@ pub async fn drill_down(
     let slot_map = Arc::new(Mutex::new(
         BTreeMap::<(String, String), SlotDetail>::new(),
     ));
+    // 同一轮内缓存分行地址/电话，避免相同 branchCode 被重复拉取详情。
     let branch_meta_cache = Arc::new(Mutex::new(
         BTreeMap::<String, (String, String)>::new(),
     ));

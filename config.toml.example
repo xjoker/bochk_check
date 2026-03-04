@@ -24,6 +24,12 @@ max_fail_count = 5
 # 环境变量：BOCHK_BARK_URLS（使用英文逗号分隔多个地址）
 urls = []
 
+[logging]
+# 是否将原始接口响应与变化记录额外写入 JSONL 文件，默认关闭
+# 建议仅在排查问题时临时开启；常规运行可保持 false，仅看 stdout/stderr
+# 环境变量：BOCHK_LOGGING_PERSIST_JSONL
+persist_jsonl = false
+
 [web]
 # 是否启用内置 Web 状态页，默认启用
 # 支持 true/false；环境变量同样支持 1/0、yes/no、on/off

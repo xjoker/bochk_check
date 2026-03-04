@@ -1,318 +1,182 @@
-# BOCHK 预约监控工具
+# BOCHK 项目补充说明
 
-中银香港（Bank of China Hong Kong）开户预约名额实时监控工具。自动轮询 BOCHK 预约系统 API，检测放号变化，通过 Bark 推送通知，并提供 Web 实时状态页面。
+本文件是 `README.md` 的补充，面向协作开发与维护场景，记录当前项目的真实实现状态、关键约束与已确认的接口结论。内容以仓库现状为准。
 
-## 功能特性
+## 项目定位
 
-- **实时监控**：每 10-30 秒轮询 dateQuota 接口，检测可预约日期变化
-- **深度查询**：检测到放号后，流式并发查询具体时段、区域、分行（目标 5 秒内完成）
-- **Bark 推送**：聚合通知，包含日期变化 + 分行详情，支持多人通知
-- **Web 状态页**：内嵌 axum HTTP 服务器，默认端口 32141，10 秒自动刷新
-- **异常告警**：连续 3 次失败即告警，含代理地址、耗时等诊断信息
-- **跨平台**：macOS / Linux（musl 静态编译）/ Windows 均可运行
-- **代理支持**：SOCKS5 代理（`socks5h://` 远端 DNS 解析）
-- **API 重试**：每次请求最多 3 次重试，间隔 300ms
-- **配置热重载**：每轮检测自动重新读取 config.toml
+`bochk_check` 是一个 Rust 编写的 BOCHK 开户预约监控工具，用于：
 
-## 快速开始
+- 轮询 BOCHK 预约接口
+- 检测 `dateQuota` 变化
+- 在存在可预约日期时继续深度查询时段、区域、分行
+- 通过 Bark 发送通知
+- 通过本地 Web 页面展示实时状态
 
-```bash
-# 1. 克隆 & 编译
-git clone <repo-url>
-cd bochk_check
-cargo build --release
+## 当前实现概览
 
-# 2. 配置
-cp config.toml.example config.toml
-# 编辑 config.toml，填入代理地址和 Bark 推送 URL
+- 每轮检测都会重新加载 `config.toml`
+- 每个 `interval` 都会新建一个独立 `reqwest::Client`
+- 每轮都会先请求 `continueInput.action` 初始化新会话
+- 因此每轮都会使用新的 `JSESSIONID`
+- 仅状态为 `A` 的日期、时段、区域、分行会进入下一层请求
+- 只要当前存在 `A` 日期，每轮都会执行深度查询
+- 深度查询命中分行后，会额外调用 `jsonBranchDetail.action` 补全地址和电话
 
-# 3. 运行
-./target/release/bochk_check
+## 已确认的接口语义
 
-# 4. 访问 Web 状态页
-open http://localhost:32141
+这些结论来自当前仓库内完整抓包与前端页面脚本，不再只是样本推断：
+
+- `A`：可预约，可继续下钻
+- `F`：已满；前端会显示为禁用项并标记“已满”
+- `D`：不可选；前端不会把它渲染为可选项
+- `WHKEQR888`：业务失败，前端提示为“操作逾时，请重新提交”
+- `precondition=D`：日期优先模式
+- `precondition=B`：分行优先模式
+
+## 当前主链路
+
+当前程序使用“日期优先”路径：
+
+```text
+continueInput.action
+  -> jsonAvailableDateAndTime.action (bean.appDate=)
+  -> jsonAvailableDateAndTime.action (bean.appDate=DD/MM/YYYY)
+  -> jsonAvailableBrsByDT.action (date + time + district=空 + precondition=D)
+  -> jsonAvailableBrsByDT.action (date + time + district + precondition=D)
+  -> jsonBranchDetail.action (bean.branchCode=...)
 ```
 
-## 配置说明
+其中：
 
-配置文件：`config.toml`（与可执行文件同目录，或当前工作目录）
+- 第一步负责建立当前轮次的会话
+- 第二步获取全局 `dateQuota`
+- 第三步获取单日 `dateTimeQuota`
+- 第四步获取可用区域
+- 第五步获取区域内可用分行
+- 第六步补充分行地址与电话
+
+## 配置现状
+
+配置文件 `config.toml` 是可选的。程序配置优先级如下：
+
+1. `BOCHK_*` 环境变量
+2. `config.toml`
+3. 代码内默认值
+
+当前默认值：
 
 ```toml
 [proxy]
-# SOCKS5 代理地址，留空则直连
-# 使用 socks5h:// 让代理端做 DNS 解析（推荐）
-url = "socks5h://127.0.0.1:1080"
+url = ""
 
 [monitor]
-# 请求间隔（秒），建议 10-30
-interval_secs = 10
+interval_secs = 30
+max_fail_count = 5
 
 [bark]
-# Bark 推送地址列表，支持多人
-urls = ["https://api.day.app/your_token_here"]
+urls = []
+
+[logging]
+persist_jsonl = false
 
 [web]
-# Web 状态页开关和端口（可选，默认启用 32141）
 enabled = true
 port = 32141
 ```
 
-## BOCHK API 接口文档
+关键点：
 
-### 基础信息
+- `proxy.url` 为空表示直连
+- `bark.urls` 为空表示关闭推送
+- `logging.persist_jsonl=false` 时，不额外写 JSONL 文件
+- `monitor.max_fail_count` 已正式接入异常告警阈值
 
-| 项目 | 值 |
-|------|------|
-| Base URL | `https://transaction.bochk.com/whk/form/openAccount/` |
-| Content-Type | `application/x-www-form-urlencoded; charset=UTF-8` |
-| 认证方式 | 无（公开接口） |
+## 日志与调试
 
-### 接口列表
+默认行为：
 
-#### 1. 获取日期配额 — `jsonAvailableDateAndTime.action`
+- 运行日志通过 `tracing` 输出到 `stderr`
+- 请求级追踪日志输出到 `bochk_check::request_log`
+- 不会额外写文件日志
 
-查询所有可预约日期及其状态。
+调试模式：
 
-**请求参数**：`bean.appDate=`（空值获取全部日期）
+- 若设置 `logging.persist_jsonl=true`
+- 程序会在基准目录写入：
+  - `api_log_YYYYMMDD.jsonl`
+  - `changes_YYYYMMDD.jsonl`
 
-**响应字段**：
-```json
-{
-  "dateQuota": {
-    "20260305": "A",   // A=Available 可预约
-    "20260306": "F",   // F=Full 已满
-    "20260310": "F"
-  },
-  "eaiCode": "SUCCESS"
-}
+这两个文件主要用于抓取原始响应和变化快照，便于排查接口行为。
+
+## Bark 与通知
+
+当前通知策略：
+
+- 首次启动且发现可预约日期时立即通知
+- `dateQuota` 发生变化时通知
+- 连续失败达到 `monitor.max_fail_count` 时触发异常告警
+- 之后每额外增加 10 次失败再重复告警
+
+当前详情通知格式：
+
+```text
+分行
+  -> 日期
+    -> 可预约时间
 ```
 
-#### 2. 获取时间段 — `jsonAvailableDateAndTime.action`
+每个分行会附带：
 
-查询指定日期的可用时间段。
+- `addressCn`
+- `telNo`
 
-**请求参数**：`bean.appDate=DD/MM/YYYY`（如 `05/03/2026`）
+## Web 页面现状
 
-**响应字段**：
-```json
-{
-  "dateTimeQuota": {
-    "P01_F": "09:00",   // P01=时段ID, F=Full
-    "P04_A": "11:15",   // A=Available
-    "P05_A": "14:00",
-    "P09_D": "17:00"    // D=Disabled 不可选
-  }
-}
-```
+- 默认监听 `32141`
+- 提供 `/` 和 `/api/status`
+- 页面支持桌面和手机端
+- 已移除地图跳转链接
+- 当前直接展示分行名称、地址、电话和可预约情况
 
-时段 ID 格式：`{slot_id}_{status}`，status 取值 A/F/D。
+需要注意：
 
-#### 3. 获取区域/分行 — `jsonAvailableBrsByDT.action`
+- `web.enabled` / `web.port` 仅在启动时读取
+- 运行中修改这两项配置不会自动重启 Web 服务
 
-根据日期和时段查询可用区域或分行。
+## 当前目录结构
 
-**请求参数**：
-```
-bean.appDate=DD/MM/YYYY
-bean.appTime=P05            # 时段 ID
-bean.district=              # 空=返回区域列表; 有值=返回该区分行
-bean.precondition=D         # D=日期优先模式
-```
-
-**响应（district 为空时 → 区域列表）**：
-```json
-{
-  "branchDistrictList": [
-    {
-      "messageCn": "西贡区",
-      "value": "_sai_kung_district_A"    // _A 后缀=有号
-    },
-    {
-      "messageCn": "中西区",
-      "value": "_central_western_district_F"  // _F=无号
-    }
-  ]
-}
-```
-
-**响应（district 有值时 → 分行列表）**：
-```json
-{
-  "availableBranchList": [
-    {
-      "messageCn": "日出康城银行服务中心",
-      "value": "952_A"    // 分行代码_状态
-    },
-    {
-      "messageCn": "西贡分行",
-      "value": "617_F"
-    }
-  ]
-}
-```
-
-### 状态码含义
-
-| 状态码 | 含义 | 说明 |
-|--------|------|------|
-| `A` | Available | 有号可预约 |
-| `F` | Full | 已满 |
-| `D` | Disabled | 不可选/不提供服务 |
-
-### API 调用链路
-
-```
-dateQuota(空) → 识别有号日期
-    ↓ 并发
-dateTimeQuota(日期) → 识别有号时段
-    ↓ 流式（不等待全部日期）
-branchDistrictList(日期+时段, district=空) → 识别有号区域
-    ↓ 并发
-availableBranchList(日期+时段+区域) → 获取具体分行
-```
-
-理论最小 RTT：**3 层**（第1层时段查询返回后立即启动第2层区域→分行流水线）
-
-## Web API
-
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/` | GET | Web 状态页（HTML） |
-| `/api/status` | GET | JSON 格式的实时状态数据 |
-
-### `/api/status` 响应示例
-
-```json
-{
-  "updated_at": "2026-03-04 13:14:00",
-  "monitoring": true,
-  "total_checks": 42,
-  "date_quota": {
-    "20260305": "A",
-    "20260306": "F"
-  },
-  "dates": ["2026-03-05", "2026-03-06"],
-  "time_slots": ["11:15", "14:00"],
-  "branches": [
-    {
-      "name": "日出康城银行服务中心",
-      "code": "952",
-      "availability": {
-        "2026-03-05": {
-          "11:15": "A",
-          "14:00": "A"
-        }
-      }
-    }
-  ]
-}
-```
-
-## 项目结构
-
-```
+```text
 bochk_check/
 ├── src/
-│   ├── main.rs          # 主循环协调（285行）
-│   ├── config.rs        # 配置结构体与加载（78行）
-│   ├── models.rs        # 数据模型、WebData（103行）
-│   ├── client.rs        # HTTP 客户端、API 重试、fetch_*（146行）
-│   ├── parser.rs        # JSON 解析、diff、格式化（225行）
-│   ├── monitor.rs       # drill_down 深度查询流水线（139行）
-│   ├── notifier.rs      # Bark 推送通知（75行）
-│   ├── web.rs           # axum Web 服务（35行）
-│   └── web.html         # 前端状态页
-├── tests/
-│   ├── mock_server.rs   # 基于抓包数据的 Mock API Server
-│   └── integration_test.rs  # 集成测试（6 个测试用例）
-├── config.toml.example  # 配置模板
+│   ├── main.rs
+│   ├── config.rs
+│   ├── models.rs
+│   ├── client.rs
+│   ├── parser.rs
+│   ├── monitor.rs
+│   ├── notifier.rs
+│   ├── web.rs
+│   └── web.html
+├── config.toml.example
 ├── Cargo.toml
-└── .gitignore
+├── README.md
+└── AGENTS.md
 ```
 
-### 模块依赖关系
+说明：
 
-```
-main → config, client, models, monitor, notifier, parser, web
-monitor → client, parser, models
-parser → models, config
-models → parser (format_date)
-client → config (base_dir)
-web → models
-notifier → (独立)
-config → (独立)
-```
+- 仓库当前不包含 `tests/` 目录
+- 仓库当前未提供 `Dockerfile`
+- `temp/` 仅作为人工分析抓包的临时资料，不属于正式运行依赖
 
-## 通知示例
+## 当前已知限制
 
-### 放号通知（聚合）
-```
-🟢 2026-03-05 出现可预约
-🟢 2026-03-09 出现可预约
+- Web 服务相关配置不支持运行中热生效
+- 若启用 `logging.persist_jsonl`，JSONL 文件会直接写到基准目录
+- 当前仍未提供 Docker 化部署文件
 
-📅 2026-03-05
-  ⏰ 11:15 → 观塘分行, 日出康城银行服务中心
-  ⏰ 14:00 → 观塘分行, 日出康城银行服务中心
+## 维护建议
 
-📅 2026-03-09
-  ⏰ 09:45 → 观塘分行, 日出康城银行服务中心
-```
-
-### 异常告警
-```
-⚠️ 监控连续失败 3 次
-最后错误: connection timed out
-耗时: 10032ms
-代理: socks5h://10.0.4.29:7005
-已运行: 42分钟
-已检查: 15次
-```
-
-## 性能指标
-
-| 指标 | 数值 | 说明 |
-|------|------|------|
-| dateQuota 单次请求 | ~350ms | 含代理延迟 |
-| drill_down 全链路 | ~100ms (mock) | 4日期×7时段×2分行 |
-| drill_down 实际环境 | <2s (预估) | 含代理网络延迟 |
-| Mock 测试 5 轮平均 | 104ms | 30ms/请求模拟延迟 |
-
-## 交叉编译
-
-```bash
-# Linux (musl 静态编译)
-rustup target add x86_64-unknown-linux-musl
-cargo build --release --target x86_64-unknown-linux-musl
-
-# Windows
-rustup target add x86_64-pc-windows-gnu
-cargo build --release --target x86_64-pc-windows-gnu
-```
-
-## 运行日志示例
-
-```
-INFO bochk_check: BOCHK 预约监控启动
-INFO bochk_check::client: 使用代理: socks5h://10.0.4.29:7005
-INFO bochk_check::web: Web 服务启动: http://0.0.0.0:32141
-INFO bochk_check: [2026-03-04 13:14:00] 首次获取数据 (372ms)
-INFO bochk_check: 当前 dateQuota: {"20260305":"F","20260306":"F"}
-INFO bochk_check: [2026-03-04 13:14:30] 无变化 (331ms)
-INFO bochk_check: [2026-03-04 13:15:00] 检测到 1 处变化 (fetch: 345ms)
-INFO bochk_check::monitor: 第1层 2026-03-05 完成 (89ms): 2 个可用时段
-INFO bochk_check::monitor: 深度查询完成: 2 个可预约时段, 耗时 312ms
-INFO bochk_check: Bark 通知已发送
-```
-
-## 依赖
-
-| 依赖 | 版本 | 用途 |
-|------|------|------|
-| reqwest | 0.12 | HTTP 客户端（SOCKS5 + rustls） |
-| tokio | 1 | 异步运行时 |
-| axum | 0.8 | Web 服务框架 |
-| serde / serde_json | 1 | JSON 序列化 |
-| chrono | 0.4 | 时间处理 |
-| tracing | 0.1 | 结构化日志 |
-| futures | 0.3 | FuturesUnordered 流式并发 |
-| toml | 0.8 | 配置文件解析 |
+- 调整接口判定逻辑前，优先对照抓包里的前端脚本
+- 更新 `README.md` 时，同步检查本文件是否仍与代码一致
+- 若继续公开发布，优先补齐部署说明与日志策略说明

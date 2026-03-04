@@ -1,5 +1,8 @@
 use serde::Deserialize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static PERSIST_JSONL_ENABLED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Deserialize, Clone)]
 #[serde(default)]
@@ -7,6 +10,7 @@ pub struct AppConfig {
     pub proxy: ProxyConfig,
     pub monitor: MonitorConfig,
     pub bark: BarkConfig,
+    pub logging: LoggingConfig,
     pub web: WebConfig,
 }
 
@@ -16,6 +20,7 @@ impl Default for AppConfig {
             proxy: ProxyConfig::default(),
             monitor: MonitorConfig::default(),
             bark: BarkConfig::default(),
+            logging: LoggingConfig::default(),
             web: WebConfig::default(),
         }
     }
@@ -60,6 +65,20 @@ pub struct BarkConfig {
 impl Default for BarkConfig {
     fn default() -> Self {
         Self { urls: Vec::new() }
+    }
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(default)]
+pub struct LoggingConfig {
+    pub persist_jsonl: bool,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            persist_jsonl: false,
+        }
     }
 }
 
@@ -122,6 +141,11 @@ fn apply_env_overrides(
             .collect();
     }
 
+    if let Ok(value) = std::env::var("BOCHK_LOGGING_PERSIST_JSONL") {
+        config.logging.persist_jsonl =
+            parse_bool_env("BOCHK_LOGGING_PERSIST_JSONL", &value)?;
+    }
+
     if let Ok(value) = std::env::var("BOCHK_WEB_ENABLED") {
         config.web.enabled = parse_bool_env("BOCHK_WEB_ENABLED", &value)?;
     }
@@ -131,6 +155,14 @@ fn apply_env_overrides(
     }
 
     Ok(())
+}
+
+pub fn set_persist_jsonl_enabled(enabled: bool) {
+    PERSIST_JSONL_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+pub fn persist_jsonl_enabled() -> bool {
+    PERSIST_JSONL_ENABLED.load(Ordering::Relaxed)
 }
 
 pub fn base_dir() -> PathBuf {

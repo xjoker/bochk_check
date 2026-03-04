@@ -13,7 +13,7 @@ use chrono::Local;
 use tokio::sync::RwLock;
 use tracing::{error, info};
 
-use config::load_config;
+use config::{load_config, set_persist_jsonl_enabled};
 use client::{build_client, fetch_date_quota, initialize_session};
 use models::{build_web_data, ChangeEntry, SharedWebData, SlotDetail, WebData};
 use monitor::drill_down;
@@ -37,6 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("BOCHK 预约监控启动");
 
     let init_config = load_config()?;
+    set_persist_jsonl_enabled(init_config.logging.persist_jsonl);
     // Bark 通知用独立 client（无代理、独立超时）
     let bark_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -58,15 +59,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut fail_notified = false;
     let started_at = std::time::Instant::now();
     let mut total_checks: u64 = 0;
+    let mut last_good_config = init_config.clone();
 
     loop {
         let config = match load_config() {
-            Ok(c) => c,
+            Ok(c) => {
+                last_good_config = c.clone();
+                c
+            }
             Err(e) => {
                 error!("重新加载配置失败: {}", e);
-                init_config.clone()
+                last_good_config.clone()
             }
         };
+        set_persist_jsonl_enabled(config.logging.persist_jsonl);
 
         let interval = Duration::from_secs(config.monitor.interval_secs);
         let cycle_start = std::time::Instant::now();
@@ -231,20 +237,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let elapsed_ms = cycle_start.elapsed().as_millis();
                 error!("请求失败 (连续第 {} 次, {}ms): {}", fail_count, elapsed_ms, e);
 
-                // 连续失败 3 次立即告警，之后每 10 次重复告警
-                let should_notify = fail_count >= 3
-                    && (!fail_notified || fail_count % 10 == 0);
+                let alert_threshold = config.monitor.max_fail_count.max(1);
+                // 首次达到阈值立即告警；之后每额外 10 次失败重复告警一次。
+                let should_notify = fail_count >= alert_threshold
+                    && (!fail_notified
+                        || (fail_count - alert_threshold) % 10 == 0);
 
                 if should_notify {
                     let uptime_mins = started_at.elapsed().as_secs() / 60;
                     let body = format!(
                         "⚠️ 监控连续失败 {} 次\n\
+                         告警阈值: {}次\n\
                          最后错误: {}\n\
                          耗时: {}ms\n\
                          代理: {}\n\
                          已运行: {}分钟\n\
                          已检查: {}次",
                         fail_count,
+                        alert_threshold,
                         e,
                         elapsed_ms,
                         config.proxy.url,
