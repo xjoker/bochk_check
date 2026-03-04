@@ -53,7 +53,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     let mut last_response: Option<serde_json::Value> = None;
-    let mut last_available: Vec<String> = Vec::new();
     let mut last_details: Vec<SlotDetail> = Vec::new();
     let mut fail_count: u32 = 0;
     let mut fail_notified = false;
@@ -93,27 +92,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 let fetch_elapsed = cycle_start.elapsed().as_millis();
                 let available = extract_available_dates(&current);
 
-                // 有号且日期变化 → 深度查询；有号且未变化 → 每5轮刷新一次分行数据
-                let dates_changed = available != last_available;
                 let has_available = !available.is_empty();
-                let refresh_cycle = total_checks % 5 == 0;
 
-                let details = if has_available && (dates_changed || refresh_cycle) {
-                    if dates_changed {
-                        info!(
-                            "[{}] 发现 {} 个可预约日期，开始深度查询... (fetch: {}ms)",
-                            now,
-                            available.len(),
-                            fetch_elapsed
-                        );
-                    } else {
-                        info!("[{}] 定期刷新分行数据", now);
-                    }
+                let details = if has_available {
+                    info!(
+                        "[{}] 发现 {} 个可预约日期，开始深度查询... (fetch: {}ms)",
+                        now,
+                        available.len(),
+                        fetch_elapsed
+                    );
                     let d = drill_down(&cycle_client, &available).await;
                     Some(d)
-                } else if has_available {
-                    info!("[{}] 可预约日期不变，跳过深度查询 ({}ms)", now, cycle_start.elapsed().as_millis());
-                    None
                 } else {
                     None
                 };
@@ -235,7 +224,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     }
                 }
 
-                last_available = available;
                 last_response = Some(current);
             }
             Err(e) => {

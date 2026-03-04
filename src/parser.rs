@@ -3,12 +3,12 @@ use chrono::Local;
 use crate::config::base_dir;
 use crate::models::{BranchInfo, ChangeEntry, FieldDiff, SlotDetail};
 
-/// 从 dateQuota 响应中提取可预约日期（状态非 "F"）
+/// 从 dateQuota 响应中提取可预约日期（仅状态为 "A"）
 pub fn extract_available_dates(response: &serde_json::Value) -> Vec<String> {
     let mut dates = Vec::new();
     if let Some(quota) = response.get("dateQuota").and_then(|v| v.as_object()) {
         for (date, status) in quota {
-            if status.as_str() != Some("F") {
+            if status.as_str() == Some("A") {
                 dates.push(date.clone());
             }
         }
@@ -46,7 +46,7 @@ pub fn parse_time_slots(response: &serde_json::Value) -> Vec<(String, String, St
             if let Some(pos) = key.rfind('_') {
                 let slot_id = &key[..pos];
                 let status = &key[pos + 1..];
-                if status != "F" {
+                if status == "A" {
                     slots.push((slot_id.to_string(), time_str, status.to_string()));
                 }
             }
@@ -68,7 +68,7 @@ pub fn parse_available_districts(response: &serde_json::Value) -> Vec<(String, S
             if let Some(pos) = value.rfind('_') {
                 let status = &value[pos + 1..];
                 let district_key = &value[..pos];
-                if status != "F" {
+                if status == "A" {
                     districts.push((district_key.to_string(), name_cn.to_string()));
                 }
             }
@@ -97,7 +97,7 @@ pub fn parse_branches(response: &serde_json::Value) -> Vec<BranchInfo> {
             if let Some(pos) = value.rfind('_') {
                 let code = &value[..pos];
                 let status = &value[pos + 1..];
-                if status != "F" {
+                if status == "A" {
                     branches.push(BranchInfo {
                         name: name.to_string(),
                         code: code.to_string(),
