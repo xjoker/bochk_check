@@ -51,12 +51,8 @@ pub struct WebData {
 pub struct WebHistoryData {
     pub today: WebHistoryDaySummary,
     pub recent_days: Vec<WebHistoryDaySummary>,
-    pub recent_events: Vec<WebHistoryEvent>,
-    pub recent_events_pagination: WebPagination,
-    pub top_release_branches: Vec<WebBranchReleaseStat>,
-    pub top_appointment_times: Vec<WebAppointmentTimeStat>,
-    pub top_release_windows: Vec<WebReleaseWindowStat>,
-    pub all_release_windows: Vec<WebReleaseBucketStat>,
+    pub recent_batches: Vec<WebHistoryBatch>,
+    pub recent_batches_pagination: WebPagination,
 }
 
 #[derive(serde::Serialize, Clone, Default)]
@@ -67,9 +63,16 @@ pub struct WebHistoryDaySummary {
 }
 
 #[derive(serde::Serialize, Clone, Default)]
-pub struct WebHistoryEvent {
+pub struct WebHistoryBatch {
     pub event_at: String,
-    pub event_type: String,
+    pub added_count: u32,
+    pub removed_count: u32,
+    pub added_items: Vec<WebHistoryBatchItem>,
+    pub removed_items: Vec<WebHistoryBatchItem>,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+pub struct WebHistoryBatchItem {
     pub appointment_date: String,
     pub appointment_time: String,
     pub branch_name: String,
@@ -77,36 +80,6 @@ pub struct WebHistoryEvent {
     pub address_cn: String,
     pub tel_no: String,
     pub google_maps_url: String,
-}
-
-#[derive(serde::Serialize, Clone, Default)]
-pub struct WebBranchReleaseStat {
-    pub branch_name: String,
-    pub release_count: u32,
-}
-
-#[derive(serde::Serialize, Clone, Default)]
-pub struct WebAppointmentTimeStat {
-    pub appointment_time: String,
-    pub release_count: u32,
-}
-
-#[derive(serde::Serialize, Clone, Default)]
-pub struct WebReleaseWindowStat {
-    pub center_time: String,
-    pub range_start: String,
-    pub range_end: String,
-    pub minus_minutes: u32,
-    pub plus_minutes: u32,
-    pub sample_count: u32,
-}
-
-#[derive(serde::Serialize, Clone, Default)]
-pub struct WebReleaseBucketStat {
-    pub bucket_label: String,
-    pub observed_start: String,
-    pub observed_end: String,
-    pub sample_count: u32,
 }
 
 #[derive(serde::Serialize, Clone, Default)]

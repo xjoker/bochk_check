@@ -70,9 +70,23 @@ pub fn urlenc(s: &str) -> String {
     result
 }
 
-/// 用“香港 + 地址 + 分行名称”生成 Google 地图搜索链接
+fn normalize_branch_label(name: &str) -> String {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return "分行".to_string();
+    }
+    if trimmed.contains("分行") {
+        trimmed.to_string()
+    } else {
+        format!("{}分行", trimmed)
+    }
+}
+
+/// 用“中国银行 + 分行名称”生成 Google 地图搜索链接
 pub fn build_map_link(name: &str, address_cn: &str) -> String {
-    let query = format!("香港 {} {}", address_cn, name).trim().to_string();
+    let _ = address_cn;
+    let branch_label = normalize_branch_label(name);
+    let query = format!("中国银行 {}", branch_label);
     let encoded = urlenc(&query);
     format!(
         "https://www.google.com/maps/search/?api=1&query={}",

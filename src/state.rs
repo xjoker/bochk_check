@@ -1,13 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use chrono::{NaiveDateTime, Timelike};
+use chrono::NaiveDateTime;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
 use crate::models::{
-    BranchInfo, SlotDetail, WebAppointmentTimeStat, WebBranchCatalogEntry, WebBranchReleaseStat,
-    WebHistoryData, WebHistoryDaySummary, WebHistoryEvent, WebPagination, WebReleaseBucketStat,
-    WebReleaseWindowStat,
+    BranchInfo, SlotDetail, WebBranchCatalogEntry, WebHistoryBatch, WebHistoryBatchItem,
+    WebHistoryData, WebHistoryDaySummary, WebPagination,
 };
 
 const DB_SCHEMA_VERSION: i64 = 3;
@@ -156,6 +155,44 @@ pub fn save_runtime_state(
         params![state.last_release_at],
     )?;
     Ok(())
+}
+
+pub fn reset_history_on_start_if_needed(
+    enabled: bool,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    if !enabled {
+        return Ok(false);
+    }
+
+    let mut conn = open_conn()?;
+    conn.execute(
+        "INSERT OR IGNORE INTO app_state(key, value) VALUES ('history_reset_done', '0')",
+        [],
+    )?;
+    let already_done = conn
+        .query_row(
+            "SELECT value FROM app_state WHERE key='history_reset_done'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .unwrap_or_else(|| "0".to_string());
+
+    if already_done == "1" {
+        return Ok(false);
+    }
+
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM slot_events", [])?;
+    tx.execute("DELETE FROM current_slots", [])?;
+    tx.execute(
+        "INSERT INTO app_state(key, value) VALUES ('history_reset_done', '1')
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [],
+    )?;
+    tx.commit()?;
+
+    Ok(true)
 }
 
 pub fn load_current_slots() -> Result<Vec<SlotDetail>, Box<dyn std::error::Error + Send + Sync>> {
@@ -451,13 +488,11 @@ pub fn filter_enabled_details(
 
 pub fn load_web_history(
     day_limit: usize,
-    event_page: usize,
-    event_page_size: usize,
-    top_branch_limit: usize,
-    top_time_limit: usize,
+    batch_page: usize,
+    batch_page_size: usize,
 ) -> Result<WebHistoryData, Box<dyn std::error::Error + Send + Sync>> {
     let conn = open_conn()?;
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today_str = chrono::Local::now().format("%Y-%m-%d").to_string();
 
     let today = conn.query_row(
         r#"
@@ -467,7 +502,7 @@ pub fn load_web_history(
         FROM slot_events
         WHERE substr(event_at, 1, 10) = ?1
         "#,
-        params![today],
+        params![today_str],
         |row| {
             Ok(WebHistoryDaySummary {
                 date: chrono::Local::now().format("%Y-%m-%d").to_string(),
@@ -502,67 +537,46 @@ pub fn load_web_history(
     }
     recent_days.reverse();
 
-    let since_date = (chrono::Local::now() - chrono::Duration::days(6))
-        .format("%Y-%m-%d")
-        .to_string();
-    let mut top_branch_stmt = conn.prepare(
-        r#"
-        SELECT
-            COALESCE(MAX(b.branch_name), e.branch_code) AS branch_name,
-            COUNT(*) AS release_count
-        FROM slot_events e
-        LEFT JOIN branches b ON b.branch_code = e.branch_code
-        WHERE e.event_type='appeared'
-          AND substr(e.event_at, 1, 10) >= ?1
-        GROUP BY e.branch_code
-        ORDER BY release_count DESC, branch_name ASC
-        LIMIT ?2
-        "#,
-    )?;
-    let top_branch_rows =
-        top_branch_stmt.query_map(params![since_date, top_branch_limit as i64], |row| {
-            Ok(WebBranchReleaseStat {
-                branch_name: row.get::<_, String>(0)?,
-                release_count: row.get::<_, i64>(1)? as u32,
-            })
-        })?;
-    let mut top_release_branches = Vec::new();
-    for row in top_branch_rows {
-        top_release_branches.push(row?);
-    }
-
-    let top_appointment_times = load_top_appointment_times(&conn, &since_date, top_time_limit)?;
-    let release_points = load_release_points(&conn, &since_date)?;
-    let all_release_windows = build_release_buckets(&release_points);
-    let mut top_release_windows = build_release_windows(&release_points);
-    top_release_windows.sort_by(|a, b| {
-        b.sample_count
-            .cmp(&a.sample_count)
-            .then_with(|| a.center_time.cmp(&b.center_time))
-    });
-    top_release_windows.truncate(top_time_limit);
-
-    let total_items = conn.query_row("SELECT COUNT(*) FROM slot_events", [], |row| {
-        row.get::<_, i64>(0)
-    })? as usize;
+    let total_items = conn.query_row(
+        "SELECT COUNT(*) FROM (SELECT event_at FROM slot_events GROUP BY event_at)",
+        [],
+        |row| row.get::<_, i64>(0),
+    )? as usize;
+    let page_size = batch_page_size.max(1);
     let total_pages = if total_items == 0 {
         0
     } else {
-        (total_items + event_page_size.saturating_sub(1)) / event_page_size.max(1)
+        (total_items + page_size.saturating_sub(1)) / page_size
     };
     let page = if total_pages == 0 {
         1
     } else {
-        event_page.max(1).min(total_pages)
+        batch_page.max(1).min(total_pages)
     };
-    let page_size = event_page_size.max(1);
     let offset = page.saturating_sub(1) * page_size;
 
-    let mut recent_event_stmt = conn.prepare(
+    let mut batch_times_stmt = conn.prepare(
+        r#"
+        SELECT event_at
+        FROM slot_events
+        GROUP BY event_at
+        ORDER BY event_at DESC
+        LIMIT ?1 OFFSET ?2
+        "#,
+    )?;
+    let batch_times_rows =
+        batch_times_stmt.query_map(params![page_size as i64, offset as i64], |row| {
+            row.get::<_, String>(0)
+        })?;
+    let mut batch_times = Vec::new();
+    for row in batch_times_rows {
+        batch_times.push(row?);
+    }
+
+    let mut batch_item_stmt = conn.prepare(
         r#"
         SELECT
             e.id,
-            e.event_at,
             e.event_type,
             e.appointment_date,
             e.appointment_time,
@@ -573,25 +587,10 @@ pub fn load_web_history(
             COALESCE(b.google_maps_url, '')
         FROM slot_events e
         LEFT JOIN branches b ON b.branch_code = e.branch_code
-        ORDER BY e.id DESC
-        LIMIT ?1 OFFSET ?2
+        WHERE e.event_at = ?1
+        ORDER BY e.id ASC
         "#,
     )?;
-    let recent_event_rows =
-        recent_event_stmt.query_map(params![page_size as i64, offset as i64], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, String>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, String>(9)?,
-            ))
-        })?;
 
     let mut duration_stmt = conn.prepare(
         r#"
@@ -606,216 +605,105 @@ pub fn load_web_history(
         LIMIT 1
         "#,
     )?;
-    let mut recent_events = Vec::new();
-    for row in recent_event_rows {
-        let (
-            event_id,
+
+    let mut recent_batches = Vec::new();
+    for event_at in batch_times {
+        let item_rows = batch_item_stmt.query_map(params![event_at.clone()], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+            ))
+        })?;
+
+        let mut added_items = Vec::new();
+        let mut removed_items = Vec::new();
+
+        for row in item_rows {
+            let (
+                event_id,
+                event_type,
+                appointment_date_raw,
+                appointment_time,
+                branch_code,
+                branch_name,
+                address_cn,
+                tel_no,
+                google_maps_url,
+            ) = row?;
+
+            let appeared_at = duration_stmt
+                .query_row(
+                    params![
+                        branch_code,
+                        appointment_date_raw,
+                        appointment_time,
+                        event_id
+                    ],
+                    |r| r.get::<_, String>(0),
+                )
+                .optional()?;
+            let duration_secs = appeared_at
+                .as_deref()
+                .and_then(|start| duration_seconds_between(start, &event_at))
+                .unwrap_or(0);
+
+            let item = WebHistoryBatchItem {
+                appointment_date: crate::parser::format_date(&appointment_date_raw),
+                appointment_time,
+                branch_name,
+                duration_secs,
+                address_cn,
+                tel_no,
+                google_maps_url,
+            };
+
+            if event_type == "appeared" {
+                added_items.push(item);
+            } else if event_type == "disappeared" {
+                removed_items.push(item);
+            }
+        }
+
+        added_items.sort_by(|a, b| {
+            a.appointment_date
+                .cmp(&b.appointment_date)
+                .then_with(|| a.appointment_time.cmp(&b.appointment_time))
+                .then_with(|| a.branch_name.cmp(&b.branch_name))
+        });
+        removed_items.sort_by(|a, b| {
+            a.appointment_date
+                .cmp(&b.appointment_date)
+                .then_with(|| a.appointment_time.cmp(&b.appointment_time))
+                .then_with(|| a.branch_name.cmp(&b.branch_name))
+        });
+
+        recent_batches.push(WebHistoryBatch {
             event_at,
-            event_type,
-            appointment_date,
-            appointment_time,
-            branch_code,
-            branch_name,
-            address_cn,
-            tel_no,
-            google_maps_url,
-        ) = row?;
-
-        let appeared_at = duration_stmt
-            .query_row(
-                params![branch_code, appointment_date, appointment_time, event_id],
-                |r| r.get::<_, String>(0),
-            )
-            .optional()?;
-
-        let duration_secs = appeared_at
-            .as_deref()
-            .and_then(|start| duration_seconds_between(start, &event_at))
-            .unwrap_or(0);
-
-        recent_events.push(WebHistoryEvent {
-            event_at,
-            event_type,
-            appointment_date: crate::parser::format_date(&appointment_date),
-            appointment_time,
-            branch_name,
-            duration_secs,
-            address_cn,
-            tel_no,
-            google_maps_url,
+            added_count: added_items.len() as u32,
+            removed_count: removed_items.len() as u32,
+            added_items,
+            removed_items,
         });
     }
 
     Ok(WebHistoryData {
         today,
         recent_days,
-        recent_events,
-        recent_events_pagination: WebPagination {
+        recent_batches,
+        recent_batches_pagination: WebPagination {
             page,
             page_size,
             total_items,
             total_pages,
         },
-        top_release_branches,
-        top_appointment_times,
-        top_release_windows,
-        all_release_windows,
     })
-}
-
-fn load_top_appointment_times(
-    conn: &Connection,
-    since_date: &str,
-    limit: usize,
-) -> Result<Vec<WebAppointmentTimeStat>, Box<dyn std::error::Error + Send + Sync>> {
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT
-            appointment_time,
-            COUNT(*) AS release_count
-        FROM slot_events
-        WHERE event_type='appeared'
-          AND substr(event_at, 1, 10) >= ?1
-        GROUP BY appointment_time
-        ORDER BY release_count DESC, appointment_time ASC
-        LIMIT ?2
-        "#,
-    )?;
-
-    let rows = stmt.query_map(params![since_date, limit as i64], |row| {
-        Ok(WebAppointmentTimeStat {
-            appointment_time: row.get::<_, String>(0)?,
-            release_count: row.get::<_, i64>(1)? as u32,
-        })
-    })?;
-
-    let mut items = Vec::new();
-    for row in rows {
-        items.push(row?);
-    }
-    Ok(items)
-}
-
-fn load_release_points(
-    conn: &Connection,
-    since_date: &str,
-) -> Result<Vec<u32>, Box<dyn std::error::Error + Send + Sync>> {
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT event_at
-        FROM slot_events
-        WHERE event_type='appeared'
-          AND substr(event_at, 1, 10) >= ?1
-        ORDER BY event_at ASC
-        "#,
-    )?;
-
-    let rows = stmt.query_map(params![since_date], |row| row.get::<_, String>(0))?;
-    let mut points = Vec::new();
-    for row in rows {
-        let event_at = row?;
-        if let Some(seconds) = hhmm_seconds_from_timestamp(&event_at) {
-            points.push(seconds);
-        }
-    }
-
-    Ok(points)
-}
-
-fn build_release_windows(points: &[u32]) -> Vec<WebReleaseWindowStat> {
-    if points.is_empty() {
-        return Vec::new();
-    }
-
-    let mut clusters: Vec<Vec<u32>> = Vec::new();
-    let cluster_gap_secs = 20 * 60;
-    for point in points {
-        if let Some(last_cluster) = clusters.last_mut() {
-            let last_point = *last_cluster.last().unwrap_or(point);
-            if point.saturating_sub(last_point) <= cluster_gap_secs {
-                last_cluster.push(*point);
-                continue;
-            }
-        }
-        clusters.push(vec![*point]);
-    }
-
-    let mut windows: Vec<WebReleaseWindowStat> = clusters
-        .into_iter()
-        .map(|cluster| {
-            let min = *cluster.first().unwrap_or(&0);
-            let max = *cluster.last().unwrap_or(&0);
-            let count = cluster.len() as u32;
-            let sum: u64 = cluster.iter().map(|v| *v as u64).sum();
-            let center = (sum / cluster.len() as u64) as u32;
-
-            WebReleaseWindowStat {
-                center_time: format_hhmm(center),
-                range_start: format_hhmm(min),
-                range_end: format_hhmm(max),
-                minus_minutes: ((center.saturating_sub(min)) + 59) / 60,
-                plus_minutes: ((max.saturating_sub(center)) + 59) / 60,
-                sample_count: count,
-            }
-        })
-        .collect();
-    windows.sort_by(|a, b| a.center_time.cmp(&b.center_time));
-
-    windows
-}
-
-fn build_release_buckets(points: &[u32]) -> Vec<WebReleaseBucketStat> {
-    use std::collections::BTreeMap;
-
-    if points.is_empty() {
-        return Vec::new();
-    }
-
-    let mut buckets: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
-    for point in points {
-        let bucket_key = *point / 1800;
-        buckets.entry(bucket_key).or_default().push(*point);
-    }
-
-    buckets
-        .into_iter()
-        .map(|(bucket_key, values)| {
-            let bucket_start = bucket_key * 1800;
-            let bucket_end = ((bucket_key + 1) * 1800).min(24 * 3600);
-            let observed_start = *values.iter().min().unwrap_or(&bucket_start);
-            let observed_end = *values.iter().max().unwrap_or(&bucket_start);
-
-            WebReleaseBucketStat {
-                bucket_label: format!(
-                    "{}-{}",
-                    format_hhmm(bucket_start),
-                    format_hhmm_edge(bucket_end)
-                ),
-                observed_start: format_hhmm(observed_start),
-                observed_end: format_hhmm(observed_end),
-                sample_count: values.len() as u32,
-            }
-        })
-        .collect()
-}
-
-fn hhmm_seconds_from_timestamp(value: &str) -> Option<u32> {
-    let dt = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S").ok()?;
-    Some(dt.time().num_seconds_from_midnight())
-}
-
-fn format_hhmm(total_seconds: u32) -> String {
-    let hours = (total_seconds / 3600) % 24;
-    let minutes = (total_seconds % 3600) / 60;
-    format!("{:02}:{:02}", hours, minutes)
-}
-
-fn format_hhmm_edge(total_seconds: u32) -> String {
-    if total_seconds >= 24 * 3600 {
-        "24:00".to_string()
-    } else {
-        format_hhmm(total_seconds)
-    }
 }
 
 fn duration_seconds_between(start: &str, end: &str) -> Option<u64> {

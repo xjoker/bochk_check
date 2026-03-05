@@ -9,6 +9,7 @@ static PERSIST_JSONL_ENABLED: AtomicBool = AtomicBool::new(false);
 pub struct AppConfig {
     pub proxy: ProxyConfig,
     pub monitor: MonitorConfig,
+    pub database: DatabaseConfig,
     pub bark: BarkConfig,
     pub logging: LoggingConfig,
     pub web: WebConfig,
@@ -19,6 +20,7 @@ impl Default for AppConfig {
         Self {
             proxy: ProxyConfig::default(),
             monitor: MonitorConfig::default(),
+            database: DatabaseConfig::default(),
             bark: BarkConfig::default(),
             logging: LoggingConfig::default(),
             web: WebConfig::default(),
@@ -43,6 +45,7 @@ impl Default for ProxyConfig {
 pub struct MonitorConfig {
     pub interval_secs: u64,
     pub max_fail_count: u32,
+    pub schedule: MonitorScheduleConfig,
 }
 
 impl Default for MonitorConfig {
@@ -50,6 +53,51 @@ impl Default for MonitorConfig {
         Self {
             interval_secs: 30,
             max_fail_count: 5,
+            schedule: MonitorScheduleConfig::default(),
+        }
+    }
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(default)]
+pub struct MonitorScheduleConfig {
+    pub mode: String,
+    pub normal_interval_secs: u64,
+    pub focus_interval_secs: u64,
+    pub midnight_focus_interval_secs: u64,
+    pub night_interval_secs: u64,
+    pub focus_minute_start: u32,
+    pub focus_minute_end: u32,
+    pub night_hour_start: u32,
+    pub night_hour_end: u32,
+}
+
+impl Default for MonitorScheduleConfig {
+    fn default() -> Self {
+        Self {
+            mode: "half_hour_focus".to_string(),
+            normal_interval_secs: 60,
+            focus_interval_secs: 10,
+            midnight_focus_interval_secs: 5,
+            night_interval_secs: 180,
+            focus_minute_start: 25,
+            focus_minute_end: 35,
+            night_hour_start: 1,
+            night_hour_end: 6,
+        }
+    }
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(default)]
+pub struct DatabaseConfig {
+    pub reset_history_on_start: bool,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            reset_history_on_start: false,
         }
     }
 }
@@ -143,6 +191,47 @@ fn apply_env_overrides(
 
     if let Ok(value) = std::env::var("BOCHK_MONITOR_MAX_FAIL_COUNT") {
         config.monitor.max_fail_count = parse_env_number("BOCHK_MONITOR_MAX_FAIL_COUNT", &value)?;
+    }
+
+    if let Ok(value) = std::env::var("BOCHK_MONITOR_SCHEDULE_MODE") {
+        config.monitor.schedule.mode = value.trim().to_string();
+    }
+    if let Ok(value) = std::env::var("BOCHK_MONITOR_NORMAL_INTERVAL_SECS") {
+        config.monitor.schedule.normal_interval_secs =
+            parse_env_number("BOCHK_MONITOR_NORMAL_INTERVAL_SECS", &value)?;
+    }
+    if let Ok(value) = std::env::var("BOCHK_MONITOR_FOCUS_INTERVAL_SECS") {
+        config.monitor.schedule.focus_interval_secs =
+            parse_env_number("BOCHK_MONITOR_FOCUS_INTERVAL_SECS", &value)?;
+    }
+    if let Ok(value) = std::env::var("BOCHK_MONITOR_MIDNIGHT_FOCUS_INTERVAL_SECS") {
+        config.monitor.schedule.midnight_focus_interval_secs =
+            parse_env_number("BOCHK_MONITOR_MIDNIGHT_FOCUS_INTERVAL_SECS", &value)?;
+    }
+    if let Ok(value) = std::env::var("BOCHK_MONITOR_NIGHT_INTERVAL_SECS") {
+        config.monitor.schedule.night_interval_secs =
+            parse_env_number("BOCHK_MONITOR_NIGHT_INTERVAL_SECS", &value)?;
+    }
+    if let Ok(value) = std::env::var("BOCHK_MONITOR_FOCUS_MINUTE_START") {
+        config.monitor.schedule.focus_minute_start =
+            parse_env_number("BOCHK_MONITOR_FOCUS_MINUTE_START", &value)?;
+    }
+    if let Ok(value) = std::env::var("BOCHK_MONITOR_FOCUS_MINUTE_END") {
+        config.monitor.schedule.focus_minute_end =
+            parse_env_number("BOCHK_MONITOR_FOCUS_MINUTE_END", &value)?;
+    }
+    if let Ok(value) = std::env::var("BOCHK_MONITOR_NIGHT_HOUR_START") {
+        config.monitor.schedule.night_hour_start =
+            parse_env_number("BOCHK_MONITOR_NIGHT_HOUR_START", &value)?;
+    }
+    if let Ok(value) = std::env::var("BOCHK_MONITOR_NIGHT_HOUR_END") {
+        config.monitor.schedule.night_hour_end =
+            parse_env_number("BOCHK_MONITOR_NIGHT_HOUR_END", &value)?;
+    }
+
+    if let Ok(value) = std::env::var("BOCHK_DATABASE_RESET_HISTORY_ON_START") {
+        config.database.reset_history_on_start =
+            parse_bool_env("BOCHK_DATABASE_RESET_HISTORY_ON_START", &value)?;
     }
 
     if let Ok(value) = std::env::var("BOCHK_BARK_URLS") {

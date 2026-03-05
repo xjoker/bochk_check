@@ -10,13 +10,13 @@ mod web;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::Local;
+use chrono::{Local, Timelike};
 use tokio::sync::RwLock;
 use tracing::{error, info};
 
 use client::{build_client, fetch_date_quota, initialize_session};
 use config::{
-    config_path, env_bark_urls_override, load_config, load_config_file_only,
+    config_path, env_bark_urls_override, load_config, load_config_file_only, MonitorConfig,
     set_persist_jsonl_enabled,
 };
 use models::{build_web_data, ChangeEntry, SharedWebData, SlotDetail, WebData};
@@ -28,7 +28,8 @@ use parser::{
 };
 use state::{
     filter_enabled_details, load_current_slot_first_seen_map, load_current_slots,
-    load_runtime_state, persist_snapshot_diff, save_runtime_state, RuntimeState,
+    load_runtime_state, persist_snapshot_diff, reset_history_on_start_if_needed,
+    save_runtime_state, RuntimeState,
 };
 use web::start_web_server;
 
@@ -66,6 +67,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let init_config = load_config()?;
     info!("当前生效 Bark 地址数量: {}", init_config.bark.urls.len());
     set_persist_jsonl_enabled(init_config.logging.persist_jsonl);
+
+    match reset_history_on_start_if_needed(init_config.database.reset_history_on_start) {
+        Ok(true) => info!("已按配置执行一次性历史重置：slot_events/current_slots 已清空"),
+        Ok(false) => {
+            if init_config.database.reset_history_on_start {
+                info!("历史重置已执行过，本次启动跳过");
+            }
+        }
+        Err(e) => error!("执行历史重置失败: {}", e),
+    }
+
     // Bark 通知用独立 client（无代理、独立超时）
     let bark_client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -118,7 +130,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         };
         set_persist_jsonl_enabled(config.logging.persist_jsonl);
 
-        let interval = Duration::from_secs(config.monitor.interval_secs);
         let cycle_start = std::time::Instant::now();
 
         let cycle_result = async {
@@ -231,7 +242,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         let first_seen_map = match load_current_slot_first_seen_map() {
                             Ok(map) => map,
                             Err(e) => {
-                                error!("璇诲彇杩囨湡鐐逛綅棣栨鎹曡幏鏃堕棿澶辫触: {}", e);
+                                error!("读取过期点位首次捕获时间失败: {}", e);
                                 std::collections::BTreeMap::new()
                             }
                         };
@@ -372,7 +383,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
 
-        tokio::time::sleep(interval).await;
+        let sleep_interval = next_sleep_interval(&config.monitor);
+        tokio::time::sleep(sleep_interval).await;
+    }
+}
+
+fn next_sleep_interval(monitor: &MonitorConfig) -> Duration {
+    let mode = monitor.schedule.mode.trim().to_ascii_lowercase();
+    if mode == "fixed" {
+        return Duration::from_secs(monitor.interval_secs.max(1));
+    }
+
+    let now = Local::now();
+    let hour = now.hour();
+    let minute = now.minute();
+    let schedule = &monitor.schedule;
+
+    if hour == 0 && minute <= 5 {
+        return Duration::from_secs(schedule.midnight_focus_interval_secs.max(1));
+    }
+
+    if is_in_focus_window(minute, schedule.focus_minute_start, schedule.focus_minute_end) {
+        return Duration::from_secs(schedule.focus_interval_secs.max(1));
+    }
+
+    if is_in_hour_window(hour, schedule.night_hour_start, schedule.night_hour_end) {
+        return Duration::from_secs(schedule.night_interval_secs.max(1));
+    }
+
+    Duration::from_secs(schedule.normal_interval_secs.max(1))
+}
+
+fn is_in_focus_window(minute: u32, start: u32, end: u32) -> bool {
+    let minute = minute.min(59);
+    let start = start.min(59);
+    let end = end.min(59);
+    if start <= end {
+        minute >= start && minute <= end
+    } else {
+        minute >= start || minute <= end
+    }
+}
+
+fn is_in_hour_window(hour: u32, start: u32, end: u32) -> bool {
+    let hour = hour.min(23);
+    let start = start.min(23);
+    let end = end.min(23);
+    if start <= end {
+        hour >= start && hour <= end
+    } else {
+        hour >= start || hour <= end
     }
 }
 

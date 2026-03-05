@@ -17,6 +17,44 @@ interval_secs = 30
 # 环境变量：BOCHK_MONITOR_MAX_FAIL_COUNT
 max_fail_count = 5
 
+[monitor.schedule]
+# 调度模式：half_hour_focus（默认）| fixed
+# fixed 模式下只使用 monitor.interval_secs
+# 环境变量：BOCHK_MONITOR_SCHEDULE_MODE
+mode = "half_hour_focus"
+
+# 常规时段轮询间隔（秒）
+# 环境变量：BOCHK_MONITOR_NORMAL_INTERVAL_SECS
+normal_interval_secs = 60
+
+# 半点前后聚焦窗口轮询间隔（秒）
+# 环境变量：BOCHK_MONITOR_FOCUS_INTERVAL_SECS
+focus_interval_secs = 10
+
+# 午夜 00:00-00:05 聚焦窗口轮询间隔（秒）
+# 环境变量：BOCHK_MONITOR_MIDNIGHT_FOCUS_INTERVAL_SECS
+midnight_focus_interval_secs = 5
+
+# 夜间时段轮询间隔（秒）
+# 环境变量：BOCHK_MONITOR_NIGHT_INTERVAL_SECS
+night_interval_secs = 180
+
+# 半点聚焦窗口分钟范围（支持跨小时）
+# 环境变量：BOCHK_MONITOR_FOCUS_MINUTE_START / BOCHK_MONITOR_FOCUS_MINUTE_END
+focus_minute_start = 25
+focus_minute_end = 35
+
+# 夜间时段小时范围（支持跨天）
+# 环境变量：BOCHK_MONITOR_NIGHT_HOUR_START / BOCHK_MONITOR_NIGHT_HOUR_END
+night_hour_start = 1
+night_hour_end = 6
+
+[database]
+# 启动时是否执行一次性历史重置（仅清空 slot_events/current_slots）
+# 仅在 app_state.history_reset_done != 1 时执行，执行后自动标记完成
+# 环境变量：BOCHK_DATABASE_RESET_HISTORY_ON_START
+reset_history_on_start = false
+
 [bark]
 # Bark 推送地址列表，支持多人通知
 # 留空数组表示关闭 Bark 推送（默认）

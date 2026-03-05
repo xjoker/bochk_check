@@ -7,3 +7,4 @@ data/file/*
 data/logs/*
 !data/logs/.gitkeep
 temp/
+dist/

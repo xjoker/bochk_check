@@ -24,6 +24,7 @@
 - 多数运行参数每轮自动重载；Web 监听项仍需重启生效
 - 支持 SOCKS5 / `socks5h://` 代理
 - 可选将原始 API 响应与变化结果写入 JSONL（默认关闭）
+- 支持“半点聚焦”动态轮询调度（`monitor.schedule`）
 
 ## 工作流程
 
@@ -104,6 +105,28 @@ interval_secs = 10
 # 连续失败多少次后开始进入告警逻辑
 max_fail_count = 5
 
+[monitor.schedule]
+# 调度模式：half_hour_focus 或 fixed
+mode = "half_hour_focus"
+# 常规时段轮询间隔（秒）
+normal_interval_secs = 60
+# 半点前后聚焦窗口轮询间隔（秒）
+focus_interval_secs = 10
+# 午夜 00:00-00:05 轮询间隔（秒）
+midnight_focus_interval_secs = 5
+# 夜间轮询间隔（秒）
+night_interval_secs = 180
+# 半点聚焦窗口（分钟）
+focus_minute_start = 25
+focus_minute_end = 35
+# 夜间窗口（小时）
+night_hour_start = 1
+night_hour_end = 6
+
+[database]
+# 启动时是否执行一次性历史重置
+reset_history_on_start = false
+
 [bark]
 # 可配置多个 Bark 地址
 urls = ["https://api.day.app/your_token_here"]
@@ -126,6 +149,16 @@ port = 32141
 | `proxy.url` | `string` | SOCKS5 代理地址，支持 `socks5h://` |
 | `monitor.interval_secs` | `u64` | 每轮检测后休眠时长 |
 | `monitor.max_fail_count` | `u32` | 连续失败告警阈值；最小按 `1` 处理 |
+| `monitor.schedule.mode` | `string` | 调度模式：`half_hour_focus` 或 `fixed` |
+| `monitor.schedule.normal_interval_secs` | `u64` | 常规时段轮询间隔（秒） |
+| `monitor.schedule.focus_interval_secs` | `u64` | 半点前后聚焦窗口轮询间隔（秒） |
+| `monitor.schedule.midnight_focus_interval_secs` | `u64` | 00:00-00:05 聚焦窗口轮询间隔（秒） |
+| `monitor.schedule.night_interval_secs` | `u64` | 夜间窗口轮询间隔（秒） |
+| `monitor.schedule.focus_minute_start` | `u32` | 半点聚焦窗口起始分钟 |
+| `monitor.schedule.focus_minute_end` | `u32` | 半点聚焦窗口结束分钟 |
+| `monitor.schedule.night_hour_start` | `u32` | 夜间窗口起始小时 |
+| `monitor.schedule.night_hour_end` | `u32` | 夜间窗口结束小时 |
+| `database.reset_history_on_start` | `bool` | 启动时执行一次性历史重置（仅清空事件与当前快照） |
 | `bark.urls` | `string[]` | Bark 推送地址，可为空 |
 | `logging.persist_jsonl` | `bool` | 是否额外落盘 `api_log_*.jsonl` 与 `changes_*.jsonl`，默认关闭 |
 | `web.enabled` | `bool` | 是否启动内置 Web 服务 |
@@ -140,6 +173,16 @@ port = 32141
 | `BOCHK_PROXY_URL` | `proxy.url` | 空字符串（直连） |
 | `BOCHK_MONITOR_INTERVAL_SECS` | `monitor.interval_secs` | `30` |
 | `BOCHK_MONITOR_MAX_FAIL_COUNT` | `monitor.max_fail_count` | `5` |
+| `BOCHK_MONITOR_SCHEDULE_MODE` | `monitor.schedule.mode` | `half_hour_focus` |
+| `BOCHK_MONITOR_NORMAL_INTERVAL_SECS` | `monitor.schedule.normal_interval_secs` | `60` |
+| `BOCHK_MONITOR_FOCUS_INTERVAL_SECS` | `monitor.schedule.focus_interval_secs` | `10` |
+| `BOCHK_MONITOR_MIDNIGHT_FOCUS_INTERVAL_SECS` | `monitor.schedule.midnight_focus_interval_secs` | `5` |
+| `BOCHK_MONITOR_NIGHT_INTERVAL_SECS` | `monitor.schedule.night_interval_secs` | `180` |
+| `BOCHK_MONITOR_FOCUS_MINUTE_START` | `monitor.schedule.focus_minute_start` | `25` |
+| `BOCHK_MONITOR_FOCUS_MINUTE_END` | `monitor.schedule.focus_minute_end` | `35` |
+| `BOCHK_MONITOR_NIGHT_HOUR_START` | `monitor.schedule.night_hour_start` | `1` |
+| `BOCHK_MONITOR_NIGHT_HOUR_END` | `monitor.schedule.night_hour_end` | `6` |
+| `BOCHK_DATABASE_RESET_HISTORY_ON_START` | `database.reset_history_on_start` | `false` |
 | `BOCHK_BARK_URLS` | `bark.urls` | 空数组（关闭推送） |
 | `BOCHK_LOGGING_PERSIST_JSONL` | `logging.persist_jsonl` | `false` |
 | `BOCHK_WEB_ENABLED` | `web.enabled` | `true` |
@@ -150,6 +193,7 @@ port = 32141
 - `BOCHK_BARK_URLS` 使用英文逗号分隔多个地址
 - `BOCHK_LOGGING_PERSIST_JSONL` 支持 `true/false`、`1/0`、`yes/no`、`on/off`
 - `BOCHK_WEB_ENABLED` 支持 `true/false`、`1/0`、`yes/no`、`on/off`
+- `BOCHK_DATABASE_RESET_HISTORY_ON_START` 支持 `true/false`、`1/0`、`yes/no`、`on/off`
 
 ## 运行时行为
 
@@ -178,8 +222,14 @@ port = 32141
 - Bark 按“分行 + 日期 + 时间点”的完整明细快照做 diff，而不是只看 `dateQuota`
 - 标题会优先显示“当前总可约点位数”，并附带本轮新增/消失数量
 - 正文会列出具体分行、日期、时间，并在尾部附分行联系信息与地图链接
-- 分行主数据会独立走“分行优先”接口链自动刷新，默认按自然日最多同步一次，不影响主监控判定
+- Google 地图搜索关键词统一为 `中国银行 + 分行名`（例如 `中国银行 辅仁街26号分行`）
 - 连续失败达到 `monitor.max_fail_count` 后会发送异常告警，之后每额外增加 10 次失败会重复告警
+
+## 新发现（基于历史数据观察）
+
+- 观察样本（`temp/bochk_check.db`）显示：放号/消号事件在 `xx:30` 前后更集中，常见于半点前后几分钟。
+- UTC+8 深夜并非完全无变化，但总体频率较低；配置中已提供夜间降频与午夜短时聚焦策略。
+- 以上为经验性规律，不保证 BOCHK 始终遵循；因此系统仍保留全时段轮询，只是动态调整间隔。
 
 ## BOCHK 接口说明
 
@@ -711,7 +761,7 @@ flowchart LR
 | --- | --- | --- |
 | `/` | `GET` | 内置状态页（静态 HTML） |
 | `/api/status` | `GET` | 当前监控状态 JSON |
-| `/api/history` | `GET` | 历史变化汇总与近 7 天统计 |
+| `/api/history` | `GET` | 历史变化汇总与近 7 天统计（支持 `?page=1`） |
 | `/api/branches` | `GET` | 当前分行目录（来自 SQLite `branches` 表） |
 
 `/api/status` 主要字段：
@@ -729,8 +779,8 @@ flowchart LR
 
 - `today`：今日新增/消失点位汇总
 - `recent_days`：近 7 天按天聚合的新增/消失统计
-- `recent_events`：最近变化记录（分行、日期、时间、地址、电话、地图链接）
-- `top_release_branches`：近 7 天新增放号次数最多的分行
+- `recent_batches`：最近变化轮次（每轮包含 `+新增/-消失` 和具体点位列表）
+- `recent_batches_pagination`：`recent_batches` 的分页信息
 
 `/api/branches` 主要字段：
 
@@ -753,11 +803,21 @@ cargo check
 
 ## 构建与交叉编译
 
-### 本地发布构建
+统一约定：所有目标平台二进制均通过 Docker 构建，且统一为 musl 版本。
+
+### Docker 统一构建（推荐）
 
 ```bash
-cargo build --release
+# Linux amd64 musl
+./docker/build-binary.sh x86_64-unknown-linux-musl
+
+# Linux arm64 musl
+./docker/build-binary.sh aarch64-unknown-linux-musl linux/amd64
 ```
+
+产物目录：
+
+- `dist/<target>/bochk_check`
 
 ### Linux musl 静态编译
 
