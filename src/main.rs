@@ -14,9 +14,10 @@ use chrono::Local;
 use tokio::sync::RwLock;
 use tracing::{error, info};
 
-use config::{load_config, set_persist_jsonl_enabled};
-use client::{
-    build_client, fetch_date_quota, initialize_session,
+use client::{build_client, fetch_date_quota, initialize_session};
+use config::{
+    config_path, env_bark_urls_override, load_config, load_config_file_only,
+    set_persist_jsonl_enabled,
 };
 use models::{build_web_data, ChangeEntry, SharedWebData, SlotDetail, WebData};
 use monitor::{drill_down, DrillDownResult};
@@ -43,7 +44,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     info!("BOCHK 预约监控启动");
 
+    let cfg_path = config_path();
+    match load_config_file_only() {
+        Ok(Some(file_cfg)) => info!(
+            "配置文件已加载: {} (bark.urls={})",
+            cfg_path.display(),
+            file_cfg.bark.urls.len()
+        ),
+        Ok(None) => info!("配置文件不存在: {}", cfg_path.display()),
+        Err(e) => error!("读取配置文件失败: {} ({})", cfg_path.display(), e),
+    }
+
+    match env_bark_urls_override() {
+        Some(urls) => info!(
+            "环境变量 BOCHK_BARK_URLS 已设置: {} 个地址（覆盖配置文件）",
+            urls.len()
+        ),
+        None => info!("环境变量 BOCHK_BARK_URLS 未设置"),
+    }
+
     let init_config = load_config()?;
+    info!("当前生效 Bark 地址数量: {}", init_config.bark.urls.len());
     set_persist_jsonl_enabled(init_config.logging.persist_jsonl);
     // Bark 通知用独立 client（无代理、独立超时）
     let bark_client = reqwest::Client::builder()
@@ -141,7 +162,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         info!("[{}] 无变化 ({}ms)", now, cycle_start.elapsed().as_millis());
                         None
                     } else {
-                        info!("[{}] 检测到 {} 处变化 (fetch: {}ms)", now, diffs.len(), fetch_elapsed);
+                        info!(
+                            "[{}] 检测到 {} 处变化 (fetch: {}ms)",
+                            now,
+                            diffs.len(),
+                            fetch_elapsed
+                        );
 
                         Some(diffs)
                     }
@@ -192,7 +218,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             .collect::<Vec<_>>()
                             .join(", ")
                     );
-                    info!("skip Bark due to incomplete probe, skipped_slots={}", skipped_slots);
+                    info!(
+                        "skip Bark due to incomplete probe, skipped_slots={}",
+                        skipped_slots
+                    );
                 } else {
                     let (added, removed) =
                         diff_detail_snapshots(&last_notified_details, &current_details);
@@ -235,13 +264,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 if let Some(title) = bark_title {
                     let body = bark_sections.join("\n\n---\n\n");
                     if !body.is_empty() {
-                        send_bark_notifications(
-                            &bark_client,
-                            &config.bark.urls,
-                            &title,
-                            &body,
-                        )
-                        .await;
+                        send_bark_notifications(&bark_client, &config.bark.urls, &title, &body)
+                            .await;
                     }
                 }
 
@@ -308,13 +332,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             Err(e) => {
                 fail_count += 1;
                 let elapsed_ms = cycle_start.elapsed().as_millis();
-                error!("请求失败 (连续第 {} 次, {}ms): {}", fail_count, elapsed_ms, e);
+                error!(
+                    "请求失败 (连续第 {} 次, {}ms): {}",
+                    fail_count, elapsed_ms, e
+                );
 
                 let alert_threshold = config.monitor.max_fail_count.max(1);
                 // 首次达到阈值立即告警；之后每额外 10 次失败重复告警一次。
                 let should_notify = fail_count >= alert_threshold
-                    && (!fail_notified
-                        || (fail_count - alert_threshold) % 10 == 0);
+                    && (!fail_notified || (fail_count - alert_threshold) % 10 == 0);
 
                 if should_notify {
                     let uptime_mins = started_at.elapsed().as_secs() / 60;

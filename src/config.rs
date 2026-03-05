@@ -34,9 +34,7 @@ pub struct ProxyConfig {
 
 impl Default for ProxyConfig {
     fn default() -> Self {
-        Self {
-            url: String::new(),
-        }
+        Self { url: String::new() }
     }
 }
 
@@ -98,15 +96,21 @@ impl Default for WebConfig {
     }
 }
 
-fn parse_bool_env(name: &str, value: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+fn parse_bool_env(
+    name: &str,
+    value: &str,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     match value.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Ok(true),
         "0" | "false" | "no" | "off" => Ok(false),
-        _ => Err(format!("环境变量 {} 的布尔值无效: {}", name, value).into()),
+        _ => Err(format!("invalid boolean for {}: {}", name, value).into()),
     }
 }
 
-fn parse_env_number<T>(name: &str, value: &str) -> Result<T, Box<dyn std::error::Error + Send + Sync>>
+fn parse_env_number<T>(
+    name: &str,
+    value: &str,
+) -> Result<T, Box<dyn std::error::Error + Send + Sync>>
 where
     T: std::str::FromStr,
     T::Err: std::fmt::Display,
@@ -114,7 +118,16 @@ where
     value
         .trim()
         .parse::<T>()
-        .map_err(|e| format!("环境变量 {} 的数值无效: {} ({})", name, value, e).into())
+        .map_err(|e| format!("invalid number for {}: {} ({})", name, value, e).into())
+}
+
+fn parse_bark_urls(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(ToString::to_string)
+        .collect()
 }
 
 fn apply_env_overrides(
@@ -133,17 +146,11 @@ fn apply_env_overrides(
     }
 
     if let Ok(value) = std::env::var("BOCHK_BARK_URLS") {
-        config.bark.urls = value
-            .split(',')
-            .map(str::trim)
-            .filter(|item| !item.is_empty())
-            .map(ToString::to_string)
-            .collect();
+        config.bark.urls = parse_bark_urls(&value);
     }
 
     if let Ok(value) = std::env::var("BOCHK_LOGGING_PERSIST_JSONL") {
-        config.logging.persist_jsonl =
-            parse_bool_env("BOCHK_LOGGING_PERSIST_JSONL", &value)?;
+        config.logging.persist_jsonl = parse_bool_env("BOCHK_LOGGING_PERSIST_JSONL", &value)?;
     }
 
     if let Ok(value) = std::env::var("BOCHK_WEB_ENABLED") {
@@ -211,6 +218,23 @@ pub fn log_dir() -> PathBuf {
     let dir = base_dir().join("data").join("logs");
     let _ = std::fs::create_dir_all(&dir);
     dir
+}
+
+pub fn load_config_file_only() -> Result<Option<AppConfig>, Box<dyn std::error::Error + Send + Sync>>
+{
+    let path = config_path();
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&path)?;
+    let config = toml::from_str(&content)?;
+    Ok(Some(config))
+}
+
+pub fn env_bark_urls_override() -> Option<Vec<String>> {
+    std::env::var("BOCHK_BARK_URLS")
+        .ok()
+        .map(|value| parse_bark_urls(&value))
 }
 
 pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error + Send + Sync>> {
