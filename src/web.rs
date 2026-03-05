@@ -1,4 +1,4 @@
-use tracing::{info, error};
+use tracing::{error, info};
 
 use crate::models::{SharedWebData, WebBranchCatalogEntry, WebData, WebHistoryData};
 

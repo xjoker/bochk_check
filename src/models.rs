@@ -156,7 +156,11 @@ pub fn build_web_data(
     let mut all_times: BTreeSet<String> = BTreeSet::new();
     let mut branch_map: BTreeMap<
         (String, String),
-        (String, String, BTreeMap<String, BTreeMap<String, WebAvailabilityCell>>),
+        (
+            String,
+            String,
+            BTreeMap<String, BTreeMap<String, WebAvailabilityCell>>,
+        ),
     > = BTreeMap::new();
 
     for slot in details {
@@ -187,13 +191,15 @@ pub fn build_web_data(
 
     let branches: Vec<WebBranch> = branch_map
         .into_iter()
-        .map(|((code, name), (address_cn, tel_no, availability))| WebBranch {
-            name,
-            code,
-            address_cn,
-            tel_no,
-            availability,
-        })
+        .map(
+            |((code, name), (address_cn, tel_no, availability))| WebBranch {
+                name,
+                code,
+                address_cn,
+                tel_no,
+                availability,
+            },
+        )
         .collect();
 
     let dates: Vec<String> = date_quota
@@ -202,9 +208,7 @@ pub fn build_web_data(
         .collect();
 
     WebData {
-        updated_at: chrono::Local::now()
-            .format("%Y-%m-%d %H:%M:%S")
-            .to_string(),
+        updated_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         last_release_at: last_release_at.to_string(),
         monitoring: true,
         total_checks,

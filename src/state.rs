@@ -409,7 +409,6 @@ pub fn load_branch_catalog(
     Ok(items)
 }
 
-
 pub fn filter_enabled_details(
     details: &[SlotDetail],
 ) -> Result<Vec<SlotDetail>, Box<dyn std::error::Error + Send + Sync>> {
@@ -520,22 +519,19 @@ pub fn load_web_history(
         LIMIT ?2
         "#,
     )?;
-    let top_branch_rows = top_branch_stmt.query_map(
-        params![since_date, top_branch_limit as i64],
-        |row| {
+    let top_branch_rows =
+        top_branch_stmt.query_map(params![since_date, top_branch_limit as i64], |row| {
             Ok(WebBranchReleaseStat {
                 branch_name: row.get::<_, String>(0)?,
                 release_count: row.get::<_, i64>(1)? as u32,
             })
-        },
-    )?;
+        })?;
     let mut top_release_branches = Vec::new();
     for row in top_branch_rows {
         top_release_branches.push(row?);
     }
 
-    let top_appointment_times =
-        load_top_appointment_times(&conn, &since_date, top_time_limit)?;
+    let top_appointment_times = load_top_appointment_times(&conn, &since_date, top_time_limit)?;
     let release_points = load_release_points(&conn, &since_date)?;
     let all_release_windows = build_release_buckets(&release_points);
     let mut top_release_windows = build_release_windows(&release_points);
@@ -583,19 +579,19 @@ pub fn load_web_history(
     )?;
     let recent_event_rows =
         recent_event_stmt.query_map(params![page_size as i64, offset as i64], |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
-            row.get::<_, String>(5)?,
-            row.get::<_, String>(6)?,
-            row.get::<_, String>(7)?,
-            row.get::<_, String>(8)?,
-            row.get::<_, String>(9)?,
-        ))
-    })?;
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+            ))
+        })?;
 
     let mut duration_stmt = conn.prepare(
         r#"

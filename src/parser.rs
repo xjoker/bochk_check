@@ -60,7 +60,10 @@ pub fn parse_time_slots(response: &serde_json::Value) -> Vec<(String, String, St
 /// 区域 `value` 末尾状态同样仅 `A` 可继续下钻。
 pub fn parse_available_districts(response: &serde_json::Value) -> Vec<(String, String)> {
     let mut districts = Vec::new();
-    if let Some(list) = response.get("branchDistrictList").and_then(|v| v.as_array()) {
+    if let Some(list) = response
+        .get("branchDistrictList")
+        .and_then(|v| v.as_array())
+    {
         for item in list {
             let value = item.get("value").and_then(|v| v.as_str()).unwrap_or("");
             let name_cn = item.get("messageCn").and_then(|v| v.as_str()).unwrap_or("");
@@ -82,17 +85,16 @@ pub fn parse_available_districts(response: &serde_json::Value) -> Vec<(String, S
 /// 从 availableBranchList 响应中解析可用分行列表
 pub fn parse_branches(response: &serde_json::Value) -> Vec<BranchInfo> {
     let mut branches = Vec::new();
-    if let Some(list) = response.get("availableBranchList").and_then(|v| v.as_array()) {
+    if let Some(list) = response
+        .get("availableBranchList")
+        .and_then(|v| v.as_array())
+    {
         for item in list {
             let value = item.get("value").and_then(|v| v.as_str()).unwrap_or("");
             let name = item
                 .get("messageCn")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| {
-                    item.get("messageHk")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                });
+                .unwrap_or_else(|| item.get("messageHk").and_then(|v| v.as_str()).unwrap_or(""));
             if value.is_empty() || name.is_empty() {
                 continue;
             }
@@ -130,11 +132,7 @@ pub fn parse_branch_detail(response: &serde_json::Value) -> (String, String) {
 }
 
 /// 递归比较两个 JSON Value，返回所有差异字段
-pub fn diff_json(
-    path: &str,
-    old: &serde_json::Value,
-    new: &serde_json::Value,
-) -> Vec<FieldDiff> {
+pub fn diff_json(path: &str, old: &serde_json::Value, new: &serde_json::Value) -> Vec<FieldDiff> {
     let mut diffs = Vec::new();
     if old == new {
         return diffs;
@@ -263,8 +261,7 @@ pub fn count_detail_points(details: &[SlotDetail]) -> usize {
 }
 
 fn format_compact_details(details: &[SlotDetail]) -> String {
-    let mut date_map: BTreeMap<String, BTreeMap<String, BTreeMap<String, usize>>> =
-        BTreeMap::new();
+    let mut date_map: BTreeMap<String, BTreeMap<String, BTreeMap<String, usize>>> = BTreeMap::new();
 
     for slot in details {
         let times = date_map.entry(slot.date.clone()).or_default();
@@ -340,7 +337,10 @@ fn format_removed_details(
                 .get(&key)
                 .map(|secs| format!(" (alive {})", format_duration_short(*secs)))
                 .unwrap_or_default();
-            lines.push(format!("- `{}` {}{}", slot.time, branch.name, duration_text));
+            lines.push(format!(
+                "- `{}` {}{}",
+                slot.time, branch.name, duration_text
+            ));
         }
     }
 
@@ -382,8 +382,16 @@ fn format_branch_contacts_section(details: &[SlotDetail]) -> String {
         sections.push(format!(
             "#### {}\n- 地址：{}\n- 电话：{}\n- [Google 地图]({})",
             name,
-            if address_cn.is_empty() { "(暂无)" } else { &address_cn },
-            if tel_no.is_empty() { "(暂无)" } else { &tel_no },
+            if address_cn.is_empty() {
+                "(暂无)"
+            } else {
+                &address_cn
+            },
+            if tel_no.is_empty() {
+                "(暂无)"
+            } else {
+                &tel_no
+            },
             google_url
         ));
     }

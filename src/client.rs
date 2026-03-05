@@ -1,10 +1,10 @@
-use std::time::Duration;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use chrono::Local;
-use tracing::{debug, error, info, warn};
-use reqwest::Proxy;
 use reqwest::header::{HeaderMap, SET_COOKIE};
+use reqwest::Proxy;
+use tracing::{debug, error, info, warn};
 
 pub const BASE_URL: &str = "https://transaction.bochk.com/whk/form/openAccount/";
 pub const USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.69(0x1800452d) NetType/4G Language/zh_CN";
@@ -19,7 +19,9 @@ fn next_request_id() -> u64 {
     NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed)
 }
 
-pub fn build_client(proxy_url: &str) -> Result<reqwest::Client, Box<dyn std::error::Error + Send + Sync>> {
+pub fn build_client(
+    proxy_url: &str,
+) -> Result<reqwest::Client, Box<dyn std::error::Error + Send + Sync>> {
     let mut builder = reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .timeout(REQUEST_TIMEOUT)
@@ -63,11 +65,7 @@ pub async fn initialize_session(
             status,
             start.elapsed().as_millis()
         );
-        return Err(std::io::Error::other(format!(
-            "会话初始化失败: HTTP {}",
-            status
-        ))
-        .into());
+        return Err(std::io::Error::other(format!("会话初始化失败: HTTP {}", status)).into());
     }
 
     let jsessionid = extract_jsessionid(resp.headers());
@@ -140,11 +138,17 @@ pub async fn api_post(
 
     for attempt in 1..=max_retries {
         let start = std::time::Instant::now();
-        debug!("→ POST {} | body: {} | attempt {}/{}", action, body, attempt, max_retries);
+        debug!(
+            "→ POST {} | body: {} | attempt {}/{}",
+            action, body, attempt, max_retries
+        );
 
         let result = client
             .post(&url)
-            .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+            .header(
+                "Content-Type",
+                "application/x-www-form-urlencoded; charset=UTF-8",
+            )
             .header("X-Requested-With", "XMLHttpRequest")
             .header("Referer", REFERER)
             .header("Origin", ORIGIN)
@@ -170,7 +174,10 @@ pub async fn api_post(
                         max_retries,
                         elapsed
                     );
-                    warn!("← {} | HTTP {} | {}ms | 重试 {}/{}", action, status, elapsed, attempt, max_retries);
+                    warn!(
+                        "← {} | HTTP {} | {}ms | 重试 {}/{}",
+                        action, status, elapsed, attempt, max_retries
+                    );
                     if attempt < max_retries {
                         tokio::time::sleep(Duration::from_millis(300)).await;
                     }
@@ -234,7 +241,10 @@ pub async fn api_post(
                             max_retries,
                             elapsed
                         );
-                        warn!("← {} | JSON 解析失败 | {}ms | 重试 {}/{}", action, elapsed, attempt, max_retries);
+                        warn!(
+                            "← {} | JSON 解析失败 | {}ms | 重试 {}/{}",
+                            action, elapsed, attempt, max_retries
+                        );
                         if attempt < max_retries {
                             tokio::time::sleep(Duration::from_millis(300)).await;
                         }
@@ -253,7 +263,10 @@ pub async fn api_post(
                     elapsed,
                     last_err
                 );
-                warn!("← {} | 请求失败 | {}ms | 重试 {}/{}: {}", action, elapsed, attempt, max_retries, last_err);
+                warn!(
+                    "← {} | 请求失败 | {}ms | 重试 {}/{}: {}",
+                    action, elapsed, attempt, max_retries, last_err
+                );
                 if attempt < max_retries {
                     tokio::time::sleep(Duration::from_millis(300)).await;
                 }
@@ -291,7 +304,11 @@ pub fn append_api_log(action: &str, body: &str, response: &serde_json::Value) {
     });
 
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_path) {
-        let _ = writeln!(file, "{}", serde_json::to_string(&entry).unwrap_or_default());
+        let _ = writeln!(
+            file,
+            "{}",
+            serde_json::to_string(&entry).unwrap_or_default()
+        );
     }
 }
 
@@ -378,7 +395,9 @@ pub async fn fetch_branch_detail(
 
                 match resp.json::<serde_json::Value>().await {
                     Ok(json) => {
-                        if let Err(e) = ensure_business_success("jsonBranchDetail.action", &query, &json) {
+                        if let Err(e) =
+                            ensure_business_success("jsonBranchDetail.action", &query, &json)
+                        {
                             warn!(
                                 target: "bochk_check::request_log",
                                 "REQ#{req_id} BIZ_ERR jsonBranchDetail.action | attempt={}/{} | {}ms | {}",

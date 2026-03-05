@@ -48,7 +48,10 @@ pub async fn drill_down(proxy_url: &str, available_dates: &[String]) -> DrillDow
         }
     }
 
-    info!("第1层全部完成: {}ms，开始汇总结果", start.elapsed().as_millis());
+    info!(
+        "第1层全部完成: {}ms，开始汇总结果",
+        start.elapsed().as_millis()
+    );
 
     let all_details: Vec<SlotDetail> = slot_map
         .into_values()
@@ -130,7 +133,11 @@ async fn drill_down_date(proxy_url: &str, date: &str) -> (String, Vec<SlotDetail
     };
 
     let parsed = parse_time_slots(&resp);
-    info!("第1层 {} 完成: {} 个可用时段", format_date(date), parsed.len());
+    info!(
+        "第1层 {} 完成: {} 个可用时段",
+        format_date(date),
+        parsed.len()
+    );
 
     for (slot_id, time_str, _) in parsed {
         let districts = match fetch_districts_with_retry(&client, &api_date, &slot_id).await {
@@ -252,7 +259,10 @@ async fn drill_down_date(proxy_url: &str, date: &str) -> (String, Vec<SlotDetail
 
     (
         date.to_string(),
-        slot_map.into_values().filter(|d| !d.branches.is_empty()).collect(),
+        slot_map
+            .into_values()
+            .filter(|d| !d.branches.is_empty())
+            .collect(),
         soft_skipped_slots,
     )
 }
