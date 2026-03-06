@@ -3,6 +3,8 @@
 `bochk_check` 是一个 Rust 编写的预约可用性监控工具。
 程序会定时轮询目标服务接口，识别可预约变化，发送 Bark 通知，并通过本地 Web 页面展示当前状态与历史变化。
 
+在线演示：<https://bochk-check.onrender.com/>
+
 ## 相关文档
 
 - [`AGENTS.md`](./AGENTS.md)
