@@ -51,8 +51,8 @@ pub async fn start_web_server(port: u16, state: SharedWebData) {
         .route("/api/branches", axum::routing::get(web_api_branches))
         .with_state(state);
 
-    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
-    info!("Web 服务启动: http://0.0.0.0:{}", port);
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    info!("Web 服务启动: http://127.0.0.1:{}", port);
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
