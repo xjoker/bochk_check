@@ -55,7 +55,7 @@ cp data/config/app.toml.example data/config/app.toml
 - `monitor.interval_secs`：基础轮询间隔
 - `monitor.max_fail_count`：异常告警阈值
 - `bark.urls`：Bark 推送地址列表
-- `web.enabled` / `web.port`：Web 开关与端口（默认仅本机访问）
+- `web.enabled` / `web.port`：Web 开关与端口（程序监听 `0.0.0.0`）
 
 ### 3. 查看状态页
 
@@ -67,7 +67,7 @@ http://127.0.0.1:32141
 
 配置文件路径：`data/config/app.toml`
 
-环境变量覆盖前缀：`BOCHK_`（优先级高于配置文件）
+环境变量覆盖（端口相关）优先级：`PORT` > `BOCHK_WEB_PORT` > `data/config/app.toml` > 代码默认值
 
 常用环境变量：
 
@@ -76,6 +76,7 @@ http://127.0.0.1:32141
 - `BOCHK_MONITOR_MAX_FAIL_COUNT`
 - `BOCHK_BARK_URLS`
 - `BOCHK_WEB_ENABLED`
+- `PORT`（Render 平台推荐）
 - `BOCHK_WEB_PORT`
 
 ## BOCHK API 说明（简化）

@@ -246,7 +246,10 @@ fn apply_env_overrides(
         config.web.enabled = parse_bool_env("BOCHK_WEB_ENABLED", &value)?;
     }
 
-    if let Ok(value) = std::env::var("BOCHK_WEB_PORT") {
+    if let Ok(value) = std::env::var("PORT") {
+        // Render 等平台会注入 PORT，优先使用平台分配端口。
+        config.web.port = parse_env_number("PORT", &value)?;
+    } else if let Ok(value) = std::env::var("BOCHK_WEB_PORT") {
         config.web.port = parse_env_number("BOCHK_WEB_PORT", &value)?;
     }
 
